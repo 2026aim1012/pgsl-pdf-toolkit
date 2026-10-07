@@ -1,19 +1,3 @@
-"""
-preview.py: the centre panel.
-
-    PREVIEW
-    ┌────────────┐
-    │    page    │      big page, centred, redrawn when the window resizes
-    └────────────┘
-    ‹  [ 1 ]  / 391  ›   page navigation
-    ┌ [1][2][3][4]… ┐    thumbnail strip (Ctrl+click / Shift+click / drag
-    └───────────────┘    selects several pages)
-
-This panel never changes any file. It only talks to the Session:
-    listens to:  documentChanged, pageChanged, pageSelectionChanged
-    calls:       set_page(i), next_page(), prev_page(), set_selected_pages([...])
-"""
-
 from pathlib import Path
 
 import pypdfium2 as pdfium
