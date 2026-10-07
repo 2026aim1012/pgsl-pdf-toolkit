@@ -138,6 +138,11 @@ class PreviewPanel(QWidget):
         s.documentChanged.connect(self.load_document)
         s.pageChanged.connect(self.show_page)
         s.pageSelectionChanged.connect(self._select_thumbs)
+        # Optional signals: only connected if your session.py has them
+        if hasattr(s, "documentClosed"):
+            s.documentClosed.connect(lambda: self.load_document(None))
+        if hasattr(s, "pageCountChanged"):
+            s.pageCountChanged.connect(self._set_page_count)
 
         # This panel -> Session
         self.prev_btn.clicked.connect(s.prev_page)
@@ -174,10 +179,7 @@ class PreviewPanel(QWidget):
                 return
 
         count = len(self.pdf) if self.pdf else 0
-        self.page_box.blockSignals(True)       # don't trigger set_page here
-        self.page_box.setRange(1, max(1, count))
-        self.page_box.blockSignals(False)
-        self.total_label.setText(f"/ {count}")
+        self._set_page_count(count)
         self._fill_thumbs(count)
 
         if count == 0:
@@ -185,6 +187,13 @@ class PreviewPanel(QWidget):
         else:
             self.page_box.setEnabled(True)
             self.show_page(self.session.page)
+
+    def _set_page_count(self, count: int):
+        """Update '/ 391' and the highest number the page box accepts."""
+        self.page_box.blockSignals(True)       # don't trigger set_page here
+        self.page_box.setRange(1, max(1, count))
+        self.page_box.blockSignals(False)
+        self.total_label.setText(f"/ {count}")
 
     def show_page(self, index: int):
         """Show page `index` (0-based) and keep the controls in sync."""
