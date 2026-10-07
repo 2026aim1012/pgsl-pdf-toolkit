@@ -131,14 +131,17 @@ class ExplorerPanel(QFrame):
             self.session.set_folder(Path(folder))
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
-        # A single click on a PDF opens it in the preview
-        if item.data(KIND_ROLE) == "pdf":
-            self.session.open(Path(item.data(PATH_ROLE)))
+        # Single click only selects. Do not open — that would prevent
+        # Ctrl + click multi-selection for batch tools.
+        pass
 
     def _on_item_double_clicked(self, item: QListWidgetItem) -> None:
-        # Double-click a directory to enter it
-        if item.data(KIND_ROLE) == "dir":
-            self.session.set_folder(Path(item.data(PATH_ROLE)))
+        kind = item.data(KIND_ROLE)
+        path = Path(item.data(PATH_ROLE))
+        if kind == "dir":
+            self.session.set_folder(path)
+        elif kind == "pdf":
+            self.session.open(path)
 
     def _on_item_changed(self, _item: QListWidgetItem) -> None:
         # A checkbox was ticked/unticked — tell the session which files
