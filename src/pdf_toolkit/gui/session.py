@@ -267,6 +267,14 @@ class Session(QObject):
         self.pageChanged.emit(clamped)
         return True
 
+    def prev_page(self) -> bool:
+        """Called by Preview to navigate to the previous page."""
+        return self.set_page(self.page - 1)
+
+    def next_page(self) -> bool:
+        """Called by Preview to navigate to the next page."""
+        return self.set_page(self.page + 1)
+
     def set_selected_pages(self, pages: list[int]) -> None:
         """Called by Preview when thumbnail selections change."""
         valid_pages = sorted({p for p in pages if 0 <= p < self.page_count})

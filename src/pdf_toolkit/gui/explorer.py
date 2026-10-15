@@ -1,15 +1,20 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QFontMetrics
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QListWidget,
-    QListWidgetItem, QAbstractItemView, QMenu, QFileDialog,
-    QSizePolicy, QFrame,
+    QAbstractItemView,
+    QFileDialog,
+    QFrame,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
 )
-
 from session import Session
-
 
 PDF_EXT = {".pdf"}
 IMG_EXT = {".png", ".jpg", ".jpeg"}
