@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
 )
-from session import Session
+
+from pdf_toolkit.gui.session import Session
 
 PDF_EXT = {".pdf"}
 IMG_EXT = {".png", ".jpg", ".jpeg"}
