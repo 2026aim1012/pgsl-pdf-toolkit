@@ -37,6 +37,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -45,6 +46,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSlider,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -75,6 +77,11 @@ class Toolkit(QWidget):
             "watermark"
             "ocr"
             "export_text"
+            "compress"
+            "insert"
+            "page_numbers"
+            "images_to_pdf"
+            "pdf_to_images"
 
         Only operations that are supplied will be enabled.
     """
@@ -97,6 +104,8 @@ class Toolkit(QWidget):
         self.page_count = 0
         self.picked_files: list[Path] = []
         self.selected_pages: list[int] = []
+        self._compression_before_size: int | None = None
+        self._compression_pending = False
 
         self._build_ui()
         self._connect_session()
@@ -228,6 +237,109 @@ class Toolkit(QWidget):
         self.content_layout.addWidget(merge_group)
 
         # --------------------------------------------------------------
+        # Compress
+        # --------------------------------------------------------------
+
+        compress_group = QGroupBox("Compress PDF")
+        compress_layout = QVBoxLayout(compress_group)
+
+        self.compress_quality_label = QLabel("Quality: 70%")
+        self.compress_quality = QSlider(Qt.Orientation.Horizontal)
+        self.compress_quality.setRange(1, 100)
+        self.compress_quality.setValue(70)
+        self.compress_quality.setToolTip(
+            "Higher quality usually preserves more detail but may reduce file size less."
+        )
+        self.compress_quality.valueChanged.connect(
+            lambda value: self.compress_quality_label.setText(f"Quality: {value}%")
+        )
+
+        self.compress_size_label = QLabel("Before: —    After: —")
+        self.compress_size_label.setWordWrap(True)
+        self.compress_button = QPushButton("Compress PDF")
+        self.compress_button.clicked.connect(self._compress)
+
+        compress_layout.addWidget(self.compress_quality_label)
+        compress_layout.addWidget(self.compress_quality)
+        compress_layout.addWidget(self.compress_size_label)
+        compress_layout.addWidget(self.compress_button)
+        self.content_layout.addWidget(compress_group)
+
+        # --------------------------------------------------------------
+        # Convert
+        # --------------------------------------------------------------
+
+        convert_group = QGroupBox("Convert")
+        convert_layout = QVBoxLayout(convert_group)
+
+        self.images_to_pdf_button = QPushButton("Images → PDF")
+        self.images_to_pdf_button.clicked.connect(self._images_to_pdf)
+        self.pdf_to_images_button = QPushButton("PDF → Images")
+        self.pdf_to_images_button.clicked.connect(self._pdf_to_images)
+
+        dpi_row = QHBoxLayout()
+        dpi_row.addWidget(QLabel("Image DPI:"))
+        self.convert_dpi = QSpinBox()
+        self.convert_dpi.setRange(72, 600)
+        self.convert_dpi.setSingleStep(24)
+        self.convert_dpi.setValue(150)
+        dpi_row.addWidget(self.convert_dpi)
+
+        convert_layout.addWidget(self.images_to_pdf_button)
+        convert_layout.addWidget(self.pdf_to_images_button)
+        convert_layout.addLayout(dpi_row)
+        self.content_layout.addWidget(convert_group)
+
+        # --------------------------------------------------------------
+        # Insert pages
+        # --------------------------------------------------------------
+
+        insert_group = QGroupBox("Insert Pages")
+        insert_layout = QFormLayout(insert_group)
+
+        self.insert_path_label = QLabel("No PDF selected")
+        self.insert_path_label.setWordWrap(True)
+        self.insert_pick_button = QPushButton("Choose PDF to insert")
+        self.insert_pick_button.clicked.connect(self._choose_insert_pdf)
+        self.insert_at = QSpinBox()
+        self.insert_at.setRange(1, 1)
+        self.insert_at.setPrefix("Before page ")
+        self.insert_button = QPushButton("Insert Pages")
+        self.insert_button.clicked.connect(self._insert_pages)
+
+        insert_layout.addRow(self.insert_pick_button)
+        insert_layout.addRow("Selected file:", self.insert_path_label)
+        insert_layout.addRow("Position:", self.insert_at)
+        insert_layout.addRow(self.insert_button)
+        self.content_layout.addWidget(insert_group)
+
+        # --------------------------------------------------------------
+        # Page numbers
+        # --------------------------------------------------------------
+
+        numbers_group = QGroupBox("Page Numbers")
+        numbers_layout = QFormLayout(numbers_group)
+        self.number_position = QComboBox()
+        self.number_position.addItem("Bottom centre", "bottom")
+        self.number_position.addItem("Bottom right", "bottom_right")
+        self.number_position.addItem("Bottom left", "bottom_left")
+        self.number_position.addItem("Top centre", "top")
+        self.number_start = QSpinBox()
+        self.number_start.setRange(1, 999999)
+        self.number_start.setValue(1)
+        self.number_numerals = QComboBox()
+        self.number_numerals.addItem("Latin (1, 2, 3)", "latin")
+        self.number_numerals.addItem("Devanagari (१, २, ३)", "devanagari")
+        self.number_button = QPushButton("Add Page Numbers")
+        self.number_button.clicked.connect(self._page_numbers)
+
+        numbers_layout.addRow("Position:", self.number_position)
+        numbers_layout.addRow("Start at:", self.number_start)
+        numbers_layout.addRow("Numerals:", self.number_numerals)
+        numbers_layout.addRow(self.number_button)
+        self.content_layout.addWidget(numbers_group)
+
+        # --------------------------------------------------------------
         # Watermark
         # --------------------------------------------------------------
 
@@ -333,6 +445,8 @@ class Toolkit(QWidget):
         self.session.pageSelectionChanged.connect(
             self._on_page_selection_changed
         )
+        self.session.documentChanged.connect(self._on_document_changed)
+        self.session.errorMessage.connect(self._on_operation_error)
 
     # ------------------------------------------------------------------
     # Session signal handlers
@@ -353,6 +467,36 @@ class Toolkit(QWidget):
         self.page_count = count
         self._update_page_info()
         self._refresh_ui()
+
+    def _on_document_changed(self, path: Path | None) -> None:
+        """Update before/after size feedback when compression completes."""
+        if not self._compression_pending:
+            return
+        self._compression_pending = False
+        if path is None or self._compression_before_size is None:
+            return
+        after_size = path.stat().st_size if path.exists() else 0
+        before_size = self._compression_before_size
+        self.compress_size_label.setText(
+            f"Before: {self._format_size(before_size)}    "
+            f"After: {self._format_size(after_size)}"
+        )
+        if after_size < before_size:
+            saved = before_size - after_size
+            percent = saved / before_size * 100 if before_size else 0
+            self.requestStatus.emit(
+                f"Compression saved {self._format_size(saved)} ({percent:.1f}%)."
+            )
+        else:
+            self.requestStatus.emit(
+                "Compression did not reduce the file size; the original size was retained."
+            )
+
+    def _on_operation_error(self, message: str) -> None:
+        """Clear pending compression feedback if a background job fails."""
+        if self._compression_pending:
+            self._compression_pending = False
+            self.compress_size_label.setText("Compression failed; see the error message.")
 
     def _on_picked_files_changed(self, files: list[Path]) -> None:
         """Receive Explorer's picked-file list."""
@@ -443,6 +587,27 @@ class Toolkit(QWidget):
             and self._has_operation("merge")
         )
 
+        self.compress_button.setEnabled(
+            has_document and not busy and self._has_operation("compress")
+        )
+        self.images_to_pdf_button.setEnabled(
+            not busy and self._has_operation("images_to_pdf")
+        )
+        self.pdf_to_images_button.setEnabled(
+            has_document and not busy and self._has_operation("pdf_to_images")
+        )
+        self.insert_pick_button.setEnabled(not busy)
+        self.insert_at.setEnabled(has_document and not busy)
+        self.insert_button.setEnabled(
+            has_document and not busy
+            and bool(self.insert_path_label.property("insert_path"))
+            and self._has_operation("insert")
+        )
+        self.number_button.setEnabled(
+            has_document and not busy and self._has_operation("page_numbers")
+        )
+        self.insert_at.setMaximum(max(1, self.page_count + 1))
+
         # Undo has its own Session signal, but busy still takes precedence.
         self.undo_button.setEnabled(
             not busy
@@ -506,6 +671,140 @@ class Toolkit(QWidget):
     # ------------------------------------------------------------------
     # Operations
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """Format a byte count compactly for the Toolkit panel."""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        if size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        return f"{size_bytes / (1024 * 1024):.2f} MB"
+
+    def _compress(self) -> None:
+        """Compress the current PDF with the selected quality."""
+        operation = self.operations.get("compress")
+        if not callable(operation) or not self.session.current:
+            return
+        self._compression_before_size = self.session.current.stat().st_size
+        self._compression_pending = True
+        self.compress_size_label.setText(
+            f"Before: {self._format_size(self._compression_before_size)}    After: working…"
+        )
+        started = self.session.apply(
+            operation,
+            description="Compressing PDF...",
+            quality=self.compress_quality.value(),
+        )
+        if not started:
+            self._compression_pending = False
+
+    def _choose_insert_pdf(self) -> None:
+        """Choose the PDF whose pages should be inserted."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose PDF to insert", "", "PDF files (*.pdf)"
+        )
+        if not path:
+            return
+        selected = Path(path)
+        self.insert_path_label.setText(selected.name)
+        self.insert_path_label.setToolTip(str(selected))
+        self.insert_path_label.setProperty("insert_path", str(selected))
+        self._refresh_ui()
+
+    def _insert_pages(self) -> None:
+        """Insert pages from the chosen PDF before the selected page."""
+        operation = self.operations.get("insert")
+        raw_path = self.insert_path_label.property("insert_path")
+        if not callable(operation) or not raw_path:
+            return
+        insert_path = Path(str(raw_path))
+        if not insert_path.is_file():
+            self._show_warning("Insert Pages", "The selected PDF no longer exists.")
+            return
+        # The UI is 1-based; the page operation contract uses zero-based indices.
+        at = self.insert_at.value() - 1
+        self.session.apply(
+            operation,
+            description=f"Inserting pages before page {self.insert_at.value()}...",
+            insert_path=insert_path,
+            at=at,
+        )
+
+    def _page_numbers(self) -> None:
+        """Apply page numbers with the chosen placement and numeral system."""
+        operation = self.operations.get("page_numbers")
+        if not callable(operation):
+            return
+        self.session.apply(
+            operation,
+            description="Adding page numbers...",
+            position=self.number_position.currentData(),
+            start=self.number_start.value(),
+            numerals=self.number_numerals.currentData(),
+        )
+
+    def _images_to_pdf(self) -> None:
+        """Convert selected images to PDF and open the result."""
+        operation = self.operations.get("images_to_pdf")
+        if not callable(operation):
+            return
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Choose images to convert", "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)",
+        )
+        if not paths:
+            return
+        output, _ = QFileDialog.getSaveFileName(
+            self, "Save converted PDF", "images.pdf", "PDF files (*.pdf)"
+        )
+        if not output:
+            return
+        out_path = Path(output)
+        if out_path.suffix.lower() != ".pdf":
+            out_path = out_path.with_suffix(".pdf")
+        self.session.run(
+            operation,
+            on_done=lambda result: self._images_to_pdf_finished(result, out_path),
+            description="Converting images to PDF...",
+            images=[Path(path) for path in paths],
+            out_path=out_path,
+        )
+
+    def _images_to_pdf_finished(self, result: Any, fallback_path: Path) -> None:
+        """Open the converted PDF returned by the engine."""
+        result_path = Path(result) if result else fallback_path
+        if result_path.is_file():
+            self.session.open(result_path)
+            self.requestStatus.emit(f"Created PDF: {result_path.name}")
+        else:
+            self._show_warning(
+                "Images to PDF", "Conversion finished, but no output PDF was found."
+            )
+
+    def _pdf_to_images(self) -> None:
+        """Render the open PDF into images in the selected output folder."""
+        operation = self.operations.get("pdf_to_images")
+        if not callable(operation) or not self.session.current:
+            return
+        out_dir = QFileDialog.getExistingDirectory(self, "Choose output folder for images")
+        if not out_dir:
+            return
+        self.session.run(
+            operation,
+            on_done=self._pdf_to_images_finished,
+            description="Converting PDF pages to images...",
+            pdf=self.session.current,
+            out_dir=Path(out_dir),
+            dpi=self.convert_dpi.value(),
+        )
+
+    def _pdf_to_images_finished(self, result: Any) -> None:
+        """Report the number of images created by the conversion engine."""
+        files = list(result or [])
+        self.requestStatus.emit(f"Created {len(files)} image(s).")
+        if not files:
+            self._show_warning("PDF to Images", "No images were created.")
 
     def _rotate(self) -> None:
         """Request a rotate operation from Session."""
