@@ -4,9 +4,18 @@ import pypdfium2 as pdfium
 from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QAbstractSpinBox, QFrame, QHBoxLayout, QLabel,
-    QListWidget, QListWidgetItem, QPushButton, QSizePolicy, QSpinBox,
-    QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QAbstractSpinBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QSizePolicy,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 
 THUMB_SIZE = QSize(60, 80)          # box each thumbnail picture fits into
