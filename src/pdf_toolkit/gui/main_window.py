@@ -35,7 +35,7 @@ if _gui_dir not in sys.path:
 
 from pdf_toolkit.gui.explorer import ExplorerPanel
 from pdf_toolkit.gui.preview import PreviewPanel
-from pdf_toolkit.gui.session import Reporter, Session
+from pdf_toolkit.gui.session import Session
 from pdf_toolkit.gui.toolkit import Toolkit
 from pdf_toolkit.gui.widgets.status_bar import StatusBarWidget
 
@@ -45,159 +45,23 @@ if TYPE_CHECKING:
 APP_TITLE = "PGSL PDF Toolkit — IIT Ropar"
 
 
-# ── Built-in Operations (Milestone 2 integration stubs & engines) ────────
+from pdf_toolkit.core import (
+    delete_pages,
+    export_text,
+    get_default_registry,
+    merge_pdfs,
+    ocr_document,
+    reverse_pages,
+    rotate_pages,
+)
 
-def default_rotate(
-    src_path: Path,
-    out_path: Path,
-    reporter: Reporter,
-    angle: int = 90,
-    pages: list[int] | None = None,
-    **kwargs: Any,
-) -> None:
-    """Rotate selected pages by the given angle."""
-    import pikepdf
-
-    reporter(0, 100, f"Rotating pages by {angle}°...")
-    with pikepdf.open(src_path) as pdf:
-        total = len(pdf.pages)
-        target = set(pages) if pages is not None else set(range(total))
-        for idx, page in enumerate(pdf.pages):
-            reporter.check_cancelled()
-            if idx in target:
-                cur = int(page.get("/Rotate", 0))
-                page.Rotate = (cur + angle) % 360
-            reporter(idx + 1, total, f"Rotated page {idx + 1}/{total}")
-        reporter.check_cancelled()
-        pdf.save(out_path)
-    reporter(100, 100, "Rotation complete")
-
-
-def default_reverse(
-    src_path: Path,
-    out_path: Path,
-    reporter: Reporter,
-    **kwargs: Any,
-) -> None:
-    """Reverse page order of the document."""
-    import pikepdf
-
-    reporter(0, 100, "Reversing page order...")
-    with pikepdf.open(src_path) as pdf:
-        reporter.check_cancelled()
-        pdf.pages.reverse()
-        reporter.check_cancelled()
-        pdf.save(out_path)
-    reporter(100, 100, "Pages reversed")
-
-
-def default_delete(
-    src_path: Path,
-    out_path: Path,
-    reporter: Reporter,
-    pages: list[int] | None = None,
-    **kwargs: Any,
-) -> None:
-    """Delete selected pages."""
-    import pikepdf
-
-    if not pages:
-        return
-    reporter(0, 100, f"Deleting {len(pages)} page(s)...")
-    with pikepdf.open(src_path) as pdf:
-        if len(pages) >= len(pdf.pages):
-            raise ValueError("Cannot delete all pages from the document.")
-        for idx in sorted(pages, reverse=True):
-            reporter.check_cancelled()
-            if 0 <= idx < len(pdf.pages):
-                del pdf.pages[idx]
-        reporter.check_cancelled()
-        pdf.save(out_path)
-    reporter(100, 100, "Pages deleted")
-
-
-def default_merge(
-    src_path: Path,
-    out_path: Path,
-    reporter: Reporter,
-    files: list[Path] | None = None,
-    **kwargs: Any,
-) -> None:
-    """Merge files selected in Explorer."""
-    import pikepdf
-
-    merge_files = files or []
-    if len(merge_files) < 2:
-        raise ValueError("At least 2 files required to merge.")
-    reporter(0, len(merge_files), "Merging files...")
-    merged = pikepdf.new()
-    for idx, f in enumerate(merge_files):
-        reporter.check_cancelled()
-        with pikepdf.open(f) as p:
-            merged.pages.extend(p.pages)
-        reporter(idx + 1, len(merge_files), f"Merged {f.name}")
-    reporter.check_cancelled()
-    merged.save(out_path)
-    reporter(len(merge_files), len(merge_files), "Merge complete")
-
-
-def default_export_text(
-    reporter: Reporter,
-    src_path: Path | None = None,
-    **kwargs: Any,
-) -> str:
-    """Extract plain text from all pages in the current document."""
-    import pypdfium2 as pdfium
-
-    if not src_path or not src_path.is_file():
-        return "(No document open to extract text from.)"
-
-    reporter(0, 100, "Extracting text...")
-    doc = pdfium.PdfDocument(str(src_path))
-    texts: list[str] = []
-    total = len(doc)
-    for i, page in enumerate(doc):
-        reporter.check_cancelled()
-        textpage = page.get_textpage()
-        page_text = textpage.get_text_range()
-        textpage.close()
-        page.close()
-        texts.append(f"--- Page {i + 1} ---\n{page_text}")
-        reporter(i + 1, total, f"Extracted page {i + 1}/{total}")
-    doc.close()
-    return "\n\n".join(texts)
-
-
-def default_ocr(
-    reporter: Reporter,
-    src_path: Path | None = None,
-    **kwargs: Any,
-) -> str:
-    """Run OCR text recognition (using RapidOCR or pypdfium2 fallback)."""
-    try:
-        from rapidocr_onnxruntime import RapidOCR
-        engine = RapidOCR()
-        import pypdfium2 as pdfium
-
-        if not src_path or not src_path.is_file():
-            return "(No document open for OCR.)"
-
-        doc = pdfium.PdfDocument(str(src_path))
-        results: list[str] = []
-        total = len(doc)
-        for i, page in enumerate(doc):
-            reporter.check_cancelled()
-            pil_image = page.render(scale=2.0).to_pil()
-            page.close()
-            ocr_res, _ = engine(pil_image)
-            lines = [line[1] for line in ocr_res] if ocr_res else []
-            results.append(f"--- Page {i + 1} ---\n" + "\n".join(lines))
-            reporter(i + 1, total, f"OCR on page {i + 1}/{total}")
-        doc.close()
-        return "\n\n".join(results)
-    except Exception:  # noqa: BLE001
-        # Graceful fallback to textpage if RapidOCR engine initialization fails
-        return default_export_text(reporter, src_path=src_path, **kwargs)
+# Aliases for backwards compatibility
+default_rotate = rotate_pages
+default_reverse = reverse_pages
+default_delete = delete_pages
+default_merge = merge_pdfs
+default_export_text = export_text
+default_ocr = ocr_document
 
 
 # ── MainWindow Class ─────────────────────────────────────────────────
@@ -217,19 +81,12 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.session = session or Session(self)
 
-        # Built-in or injected operations
-        self.operations = operations if operations is not None else {
-            "rotate": default_rotate,
-            "reverse": default_reverse,
-            "delete": default_delete,
-            "merge": default_merge,
-            "export_text": lambda rpt, **kw: default_export_text(
-                rpt, src_path=self.session.current, **kw
-            ),
-            "ocr": lambda rpt, **kw: default_ocr(
-                rpt, src_path=self.session.current, **kw
-            ),
-        }
+        # Built-in or injected operations from operations registry
+        self.operations = (
+            operations
+            if operations is not None
+            else get_default_registry().bind_session(self.session)
+        )
 
         self._setup_window()
         self._build_layout()

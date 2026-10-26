@@ -13,7 +13,6 @@ import pytest
 
 from pdf_toolkit.core.page_ops import insert_pages, move_pages_order, reorder_pages
 
-
 # ---------- helpers ----------
 
 def make_pdf(path: Path, count: int, first_width: int = 100) -> Path:
