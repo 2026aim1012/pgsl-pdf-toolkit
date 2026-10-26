@@ -3,6 +3,7 @@ from pathlib import Path
 import os, tempfile
 import img2pdf
 from PIL import Image
+import pypdfium2 as pdfium
 
 def _progress(reporter, done, total, msg=""):
     reporter(done, total, msg)
@@ -41,4 +42,18 @@ def images_to_pdf(reporter, images, out_path) -> Path:
     return out_path
 
 def pdf_to_images(reporter, pdf, out_dir, dpi=150) -> list[Path]:
-    raise NotImplementedError
+    pdf, out_dir = Path(pdf), Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    doc = pdfium.PdfDocument(str(pdf))
+    try:
+        total = len(doc)
+        results = []
+        for i in range(total):
+            _progress(reporter, i, total, f"Saving page {i + 1}/{total}")
+            img = doc[i].render(scale=dpi / 72).to_pil()
+            out = out_dir / f"{pdf.stem}_page{i + 1:03d}.png"
+            img.save(out)
+            results.append(out)
+        return results
+    finally:
+        doc.close()
