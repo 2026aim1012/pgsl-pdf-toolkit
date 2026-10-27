@@ -4,8 +4,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -61,6 +64,57 @@ class ElidedLabel(QLabel):
                                max(20, self.width()))
         super().setText(elided)
 
+class MergeOrderDialog(QDialog):
+    """Lets the user arrange files (top = first) before merging or converting."""
+
+    def __init__(self, files, parent=None, title="Choose file order"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self._files = [Path(f) for f in files]
+
+        self.list = QListWidget()
+        up, down = QPushButton("Move up"), QPushButton("Move down")
+        up.clicked.connect(lambda: self._move(-1))
+        down.clicked.connect(lambda: self._move(+1))
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        side = QVBoxLayout()
+        side.addWidget(up)
+        side.addWidget(down)
+        side.addStretch()
+        row = QHBoxLayout()
+        row.addWidget(self.list, 1)
+        row.addLayout(side)
+
+        root = QVBoxLayout(self)
+        root.addWidget(QLabel("Files are used from top to bottom."))
+        root.addLayout(row)
+        root.addWidget(buttons)
+        self.resize(420, 320)
+        self._refill(0)
+
+    def _refill(self, current: int) -> None:
+        self.list.clear()
+        for p in self._files:
+            item = QListWidgetItem(p.name)
+            item.setToolTip(str(p))
+            self.list.addItem(item)
+        self.list.setCurrentRow(current)
+
+    def _move(self, delta: int) -> None:
+        row = self.list.currentRow()
+        if row < 0:
+            return
+        self._files, new_row = move_item(self._files, row, delta)
+        self._refill(new_row)
+
+    def ordered_files(self) -> list[Path]:
+        return list(self._files)
 
 # The panel
 
