@@ -26,6 +26,7 @@ IMG_EXT = {".png", ".jpg", ".jpeg"}
 PATH_ROLE = Qt.ItemDataRole.UserRole
 KIND_ROLE = Qt.ItemDataRole.UserRole + 1  # "dir" | "pdf" | "img"
 
+
 def move_item(items: list, index: int, delta: int) -> tuple[list, int]:
     """Move items[index] by delta (-1 up, +1 down). Returns (new_list, new_index)."""
     new = index + delta
@@ -34,6 +35,7 @@ def move_item(items: list, index: int, delta: int) -> tuple[list, int]:
     out = list(items)
     out[index], out[new] = out[new], out[index]
     return out, new
+
 
 # Small helper function
 
@@ -64,6 +66,7 @@ class ElidedLabel(QLabel):
         )
         super().setText(elided)
 
+
 class MergeOrderDialog(QDialog):
     """Lets the user arrange files (top = first) before merging or converting."""
 
@@ -78,8 +81,8 @@ class MergeOrderDialog(QDialog):
         down.clicked.connect(lambda: self._move(+1))
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel)
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
@@ -115,6 +118,7 @@ class MergeOrderDialog(QDialog):
 
     def ordered_files(self) -> list[Path]:
         return list(self._files)
+
 
 # The panel
 
