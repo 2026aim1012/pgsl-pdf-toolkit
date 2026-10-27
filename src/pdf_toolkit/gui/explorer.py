@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from pdf_toolkit.gui.session import Session
+from pdf_toolkit.core.converter import images_to_pdf
 
 PDF_EXT = {".pdf"}
 IMG_EXT = {".png", ".jpg", ".jpeg"}
@@ -164,6 +165,11 @@ class ExplorerPanel(QFrame):
         self.order_btn = QPushButton("Order…")
         self.order_btn.setToolTip("Choose the order of ticked files")
         btn_row.addWidget(self.order_btn)
+
+        self.img_pdf_btn = QPushButton("Images → PDF")
+        self.img_pdf_btn.setToolTip("Combine the ticked images into one PDF")
+        btn_row.addWidget(self.img_pdf_btn)
+
         layout.addLayout(btn_row)
         self._update_buttons()
 
@@ -179,6 +185,7 @@ class ExplorerPanel(QFrame):
         self.list.itemChanged.connect(self._on_item_changed)
         self.list.customContextMenuRequested.connect(self._on_context_menu)
         self.order_btn.clicked.connect(self._on_choose_order)
+        self.img_pdf_btn.clicked.connect(self._on_images_to_pdf)
 
     def _connect_session(self) -> None:
         self.session.folderChanged.connect(self._on_folder_changed)
@@ -200,7 +207,10 @@ class ExplorerPanel(QFrame):
 
     def _update_buttons(self) -> None:
         idle = not self.session.busy
-        self.order_btn.setEnabled(idle and len(self.session.picked_files) >= 2)
+        picked = self.session.picked_files
+        self.order_btn.setEnabled(idle and len(picked) >= 2)
+        self.img_pdf_btn.setEnabled(
+            idle and any(p.suffix.lower() in IMG_EXT for p in picked))
 
     def _on_choose_order(self) -> None:
         dlg = MergeOrderDialog(self.session.picked_files, self)
@@ -218,8 +228,41 @@ class ExplorerPanel(QFrame):
         if folder:
             self.session.set_folder(Path(folder))
 
+    def _on_images_to_pdf(self) -> None:
+        images = [p for p in self.session.picked_files
+                if p.suffix.lower() in IMG_EXT]
+        if not images:
+            self.session.statusMessage.emit("Tick one or more images first.")
+            return
+
+        dlg = MergeOrderDialog(images, self, title="Choose page order")
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        start = (self.session.folder or images[0].parent) / "images.pdf"
+        chosen, _ = QFileDialog.getSaveFileName(
+            self, "Save PDF as", str(start), "PDF (*.pdf)")
+        if not chosen:
+            return
+        out_path = Path(chosen)
+        if out_path.suffix.lower() != ".pdf":
+            out_path = out_path.with_suffix(".pdf")
+
+        self.session.run(
+            images_to_pdf,
+            on_done=self._on_images_pdf_done,
+            description="Converting images to PDF…",
+            images=dlg.ordered_files(),
+            out_path=out_path,
+        )
+
+    def _on_images_pdf_done(self, result: Path) -> None:
+        self.session.open(result)
+        if self.session.folder:
+            self._populate(self.session.folder)   # show the new file in the list
+
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
-        # Single click only selects. Do not open — that would prevent
+        # Single click only selects. Opening it would prevent
         # Ctrl + click multi-selection for batch tools.
         pass
 
