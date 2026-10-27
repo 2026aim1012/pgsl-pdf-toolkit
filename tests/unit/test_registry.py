@@ -15,11 +15,15 @@ from pdf_toolkit.core.registry import (
 )
 
 
-def dummy_modifying_op(src: Path, out: Path, reporter: Any = None, **kwargs: Any) -> None:
+def dummy_modifying_op(
+    src: Path, out: Path, reporter: Any = None, **kwargs: Any
+) -> None:
     """A dummy modifying operation."""
 
 
-def dummy_readonly_op(reporter: Any = None, src_path: Path | None = None, **kwargs: Any) -> str:
+def dummy_readonly_op(
+    reporter: Any = None, src_path: Path | None = None, **kwargs: Any
+) -> str:
     """A dummy read-only operation."""
     return f"content of {src_path}"
 
@@ -168,6 +172,9 @@ def test_default_registry_contents():
         "compress",
         "export_text",
         "ocr",
+        "images_to_pdf",
+        "image_to_pdf",
+        "pdf_to_images",
     }
     for op_name in expected_operations:
         assert op_name in reg, f"Expected {op_name} to be in default registry"
@@ -180,9 +187,48 @@ def test_default_registry_contents():
     assert reg.get_info("insert").is_modifying
     assert reg.get_info("compress").is_modifying
     assert reg.get_info("watermark").is_modifying
+    assert reg.get_info("images_to_pdf").is_modifying
+    assert reg.get_info("image_to_pdf").is_modifying
+    assert reg.get_info("pdf_to_images").is_read_only
 
 
 def test_global_default_registry_singleton():
     assert isinstance(default_registry, OperationsRegistry)
     assert "rotate" in default_registry
     assert "reorder" in default_registry
+    assert "images_to_pdf" in default_registry
+    assert "pdf_to_images" in default_registry
+
+
+def test_registry_converter_contract_and_binding(tmp_path: Path):
+    import pikepdf
+    from PIL import Image
+
+    # Create dummy images
+    img1 = tmp_path / "img1.png"
+    img2 = tmp_path / "img2.jpg"
+    Image.new("RGB", (100, 100), "red").save(img1)
+    Image.new("RGB", (100, 100), "blue").save(img2)
+
+    reg = get_default_registry()
+
+    # 1. Modifying contract: images_to_pdf(src, out, reporter, images=[...])
+    pdf_out = tmp_path / "from_images.pdf"
+    reg["images_to_pdf"](None, pdf_out, None, images=[img1, img2])
+    assert pdf_out.is_file()
+    with pikepdf.open(pdf_out) as p:
+        assert len(p.pages) == 2
+
+    # 2. Session binding with pdf_to_images
+    class FakeSession:
+        current = pdf_out
+
+    session = FakeSession()
+    bound = reg.bind_session(session)
+
+    img_out_dir = tmp_path / "exported_imgs"
+    # Bound op injects session.current as src_path
+    results = bound["pdf_to_images"](reporter=None, out_dir=img_out_dir, dpi=72)
+    assert len(results) == 2
+    for r in results:
+        assert Path(r).is_file()

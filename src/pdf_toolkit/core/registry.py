@@ -181,10 +181,18 @@ class OperationsRegistry:
 
 def get_default_registry() -> OperationsRegistry:
     """Create and return a new OperationsRegistry populated with all default core operations."""
+    from pdf_toolkit.core.numbering import page_numbers
     from pdf_toolkit.core.operations import register_default_operations
 
     reg = OperationsRegistry()
     register_default_operations(reg)
+    reg.register(
+        "page_numbers",
+        page_numbers,
+        kind="modifying",
+        display_name="Page Numbers",
+        description="Add page numbers in Latin or Devanagari numerals to the document.",
+    )
     return reg
 
 

@@ -49,8 +49,10 @@ from pdf_toolkit.core import (
     delete_pages,
     export_text,
     get_default_registry,
+    images_to_pdf,
     merge_pdfs,
     ocr_document,
+    pdf_to_images,
     reverse_pages,
     rotate_pages,
 )
@@ -62,9 +64,12 @@ default_delete = delete_pages
 default_merge = merge_pdfs
 default_export_text = export_text
 default_ocr = ocr_document
+default_images_to_pdf = images_to_pdf
+default_pdf_to_images = pdf_to_images
 
 
 # ── MainWindow Class ─────────────────────────────────────────────────
+
 
 class MainWindow(QMainWindow):
     """
@@ -235,7 +240,9 @@ class MainWindow(QMainWindow):
 
         act_reset_layout = QAction("&Reset Panel Layout", self)
         act_reset_layout.setShortcut(QKeySequence("Ctrl+0"))
-        act_reset_layout.triggered.connect(lambda: self.splitter.setSizes([260, 740, 280]))
+        act_reset_layout.triggered.connect(
+            lambda: self.splitter.setSizes([260, 740, 280])
+        )
         view_menu.addAction(act_reset_layout)
 
         # ── Help Menu ──
@@ -316,7 +323,9 @@ class MainWindow(QMainWindow):
     def _on_save_as(self) -> None:
         if not self.session.has_document:
             return
-        default_name = self.session.source.name if self.session.source else "document.pdf"
+        default_name = (
+            self.session.source.name if self.session.source else "document.pdf"
+        )
         start_dir = str(
             self.session.source.parent
             if self.session.source

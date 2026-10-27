@@ -59,4 +59,3 @@ def scanned_pdf(fixtures_dir: Path) -> Path:
 def sample_images(fixtures_dir: Path) -> list[Path]:
     """Paths to the two sample images (PNG and JPG)."""
     return [fixtures_dir / "image1.png", fixtures_dir / "image2.jpg"]
-

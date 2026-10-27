@@ -19,6 +19,12 @@ from typing import TYPE_CHECKING, Any
 import pikepdf
 from PIL import Image, ImageDraw, ImageFont
 
+from pdf_toolkit.core.converter import (
+    images_to_pdf as _converter_images_to_pdf,
+)
+from pdf_toolkit.core.converter import (
+    pdf_to_images as _converter_pdf_to_images,
+)
 from pdf_toolkit.core.page_ops import insert_pages, reorder_pages
 
 if TYPE_CHECKING:
@@ -43,6 +49,19 @@ def _check_cancelled(reporter: Reporter | None) -> None:
             from pdf_toolkit.gui.session import Cancelled
 
             raise Cancelled("Operation cancelled by user")
+
+
+class _NullReporter:
+    """Safe no-op reporter passed to core converter functions when reporter is None."""
+
+    def __call__(self, done: int, total: int, msg: str = "") -> None:
+        pass
+
+    def set_message(self, msg: str) -> None:
+        pass
+
+    def check_cancelled(self) -> None:
+        pass
 
 
 # ── Modifying Operations ─────────────────────────────────────────────
@@ -336,6 +355,43 @@ def compress_pdf(
         raise
 
 
+def images_to_pdf(
+    src: Any = None,
+    out: Any = None,
+    reporter: Any = None,
+    *,
+    images: Sequence[Path | str] | None = None,
+    files: Sequence[Path | str] | None = None,
+    **kwargs: Any,
+) -> Path:
+    """
+    Convert a sequence of images into a PDF document.
+
+    Conforms to modifying contract: op(src, out, reporter, **opts) -> Path
+    Also accepts direct call convention: op(reporter, images, out_path).
+    """
+    if isinstance(out, (list, tuple)):
+        actual_reporter = src
+        actual_images = out
+        actual_out = reporter or kwargs.get("out_path") or kwargs.get("out")
+    elif isinstance(src, (list, tuple)):
+        actual_images = src
+        actual_out = out or kwargs.get("out_path") or kwargs.get("out")
+        actual_reporter = reporter or kwargs.get("reporter")
+    else:
+        actual_out = out or kwargs.get("out") or kwargs.get("out_path")
+        actual_reporter = reporter or kwargs.get("reporter")
+        actual_images = images or files or kwargs.get("picked_files")
+
+    if actual_out is None:
+        raise ValueError("Output path must be specified.")
+    if not actual_images:
+        raise ValueError("No images selected")
+
+    rep = actual_reporter if actual_reporter is not None else _NullReporter()
+    return _converter_images_to_pdf(rep, actual_images, actual_out)
+
+
 # ── Read-only Operations ─────────────────────────────────────────────
 
 
@@ -405,6 +461,35 @@ def ocr_document(
         return "\n\n".join(results)
     except Exception:  # noqa: BLE001
         return export_text(reporter, src_path=src, **kwargs)
+
+
+def pdf_to_images(
+    reporter: Reporter | None = None,
+    pdf: Path | str | None = None,
+    out_dir: Path | str | None = None,
+    dpi: int = 150,
+    *,
+    src_path: Path | str | None = None,
+    **kwargs: Any,
+) -> list[Path]:
+    """
+    Convert PDF pages into individual image files (PNG).
+
+    Conforms to read-only contract: fn(reporter=None, src_path=..., out_dir=..., dpi=150) -> list[Path]
+    Also accepts direct call convention: fn(reporter, pdf, out_dir, dpi=150).
+    """
+    target_pdf = pdf if pdf is not None else (src_path or kwargs.get("src"))
+    if not target_pdf:
+        raise ValueError("No PDF document specified.")
+
+    target_out_dir = out_dir if out_dir is not None else kwargs.get("out_dir")
+    if not target_out_dir:
+        raise ValueError("out_dir must be specified.")
+
+    target_dpi = dpi if dpi is not None else kwargs.get("dpi", 150)
+    rep = reporter if reporter is not None else _NullReporter()
+
+    return _converter_pdf_to_images(rep, target_pdf, target_out_dir, dpi=target_dpi)
 
 
 # ── Registration Helper ──────────────────────────────────────────────
@@ -481,4 +566,25 @@ def register_default_operations(registry: OperationsRegistry) -> None:
         kind="read_only",
         display_name="Run OCR",
         description="Perform optical character recognition to extract text from scanned pages.",
+    )
+    registry.register(
+        "images_to_pdf",
+        images_to_pdf,
+        kind="modifying",
+        display_name="Images to PDF",
+        description="Convert multiple image files into a single PDF document.",
+    )
+    registry.register(
+        "image_to_pdf",
+        images_to_pdf,
+        kind="modifying",
+        display_name="Images to PDF",
+        description="Convert multiple image files into a single PDF document.",
+    )
+    registry.register(
+        "pdf_to_images",
+        pdf_to_images,
+        kind="read_only",
+        display_name="PDF to Images",
+        description="Convert PDF pages into individual image files (PNG).",
     )

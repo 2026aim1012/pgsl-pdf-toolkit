@@ -41,11 +41,15 @@ def ensure_font(filename: str) -> Path:
     tmp_candidate = Path("/tmp") / filename
     if tmp_candidate.is_file():
         import shutil
+
         shutil.copy2(tmp_candidate, target)
         return target
     import subprocess
+
     url = FONT_URLS[filename]
-    subprocess.run(["curl", "-sL", "-A", "Mozilla/5.0", url, "-o", str(target)], check=True)
+    subprocess.run(
+        ["curl", "-sL", "-A", "Mozilla/5.0", url, "-o", str(target)], check=True
+    )
     return target
 
 
@@ -65,6 +69,7 @@ def get_default_font(size: int = 14) -> ImageFont.ImageFont | ImageFont.FreeType
 
 # ── 1. English PDF ───────────────────────────────────────────────────
 
+
 def build_english_pdf(out_path: Path) -> None:
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -72,13 +77,33 @@ def build_english_pdf(out_path: Path) -> None:
     # Page 1
     pdf.add_page()
     pdf.set_font("helvetica", "B", 20)
-    pdf.cell(w=pdf.epw, h=14, text="PGSL PDF Toolkit", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(
+        w=pdf.epw,
+        h=14,
+        text="PGSL PDF Toolkit",
+        new_x="LMARGIN",
+        new_y="NEXT",
+        align="C",
+    )
     pdf.set_font("helvetica", "I", 12)
-    pdf.cell(w=pdf.epw, h=8, text="Indian Institute of Technology Ropar", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(
+        w=pdf.epw,
+        h=8,
+        text="Indian Institute of Technology Ropar",
+        new_x="LMARGIN",
+        new_y="NEXT",
+        align="C",
+    )
     pdf.ln(6)
 
     pdf.set_font("helvetica", "B", 14)
-    pdf.cell(w=pdf.epw, h=10, text="1. Executive Summary & Overview", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        w=pdf.epw,
+        h=10,
+        text="1. Executive Summary & Overview",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
     pdf.set_font("helvetica", "", 10)
     pdf.multi_cell(
         w=pdf.epw,
@@ -97,7 +122,9 @@ def build_english_pdf(out_path: Path) -> None:
     pdf.ln(4)
 
     pdf.set_font("helvetica", "B", 14)
-    pdf.cell(w=pdf.epw, h=10, text="2. Core Requirements", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        w=pdf.epw, h=10, text="2. Core Requirements", new_x="LMARGIN", new_y="NEXT"
+    )
     pdf.set_font("helvetica", "", 10)
     requirements = [
         "FR-01: Document preview with responsive thumbnail strip and navigation.",
@@ -112,7 +139,13 @@ def build_english_pdf(out_path: Path) -> None:
     # Page 2
     pdf.add_page()
     pdf.set_font("helvetica", "B", 16)
-    pdf.cell(w=pdf.epw, h=12, text="Architecture & Technical Design", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        w=pdf.epw,
+        h=12,
+        text="Architecture & Technical Design",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
     pdf.set_font("helvetica", "", 10)
     pdf.multi_cell(
         w=pdf.epw,
@@ -137,7 +170,13 @@ def build_english_pdf(out_path: Path) -> None:
     # Page 3
     pdf.add_page()
     pdf.set_font("helvetica", "B", 16)
-    pdf.cell(w=pdf.epw, h=12, text="Testing, Verification & Quality Standards", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        w=pdf.epw,
+        h=12,
+        text="Testing, Verification & Quality Standards",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
     pdf.set_font("helvetica", "", 10)
     pdf.multi_cell(
         w=pdf.epw,
@@ -161,6 +200,7 @@ def build_english_pdf(out_path: Path) -> None:
 
 # ── 2. Hindi PDF ─────────────────────────────────────────────────────
 
+
 def build_hindi_pdf(out_path: Path) -> None:
     deva_font = ensure_font("NotoSansDevanagari-Regular.ttf")
     pdf = FPDF()
@@ -170,9 +210,23 @@ def build_hindi_pdf(out_path: Path) -> None:
     # Page 1
     pdf.add_page()
     pdf.set_font("NotoDeva", size=18)
-    pdf.cell(w=pdf.epw, h=14, text="पीजीएसएल पीडीएफ टूलकिट", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(
+        w=pdf.epw,
+        h=14,
+        text="पीजीएसएल पीडीएफ टूलकिट",
+        new_x="LMARGIN",
+        new_y="NEXT",
+        align="C",
+    )
     pdf.set_font("NotoDeva", size=12)
-    pdf.cell(w=pdf.epw, h=8, text="भारतीय प्रौद्योगिकी संस्थान रोपड़ - संगणक विज्ञान विभाग", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(
+        w=pdf.epw,
+        h=8,
+        text="भारतीय प्रौद्योगिकी संस्थान रोपड़ - संगणक विज्ञान विभाग",
+        new_x="LMARGIN",
+        new_y="NEXT",
+        align="C",
+    )
     pdf.ln(6)
 
     pdf.set_font("NotoDeva", size=14)
@@ -209,7 +263,9 @@ def build_hindi_pdf(out_path: Path) -> None:
     # Page 2
     pdf.add_page()
     pdf.set_font("NotoDeva", size=16)
-    pdf.cell(w=pdf.epw, h=12, text="तकनीकी संरचना एवं मॉड्यूल", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        w=pdf.epw, h=12, text="तकनीकी संरचना एवं मॉड्यूल", new_x="LMARGIN", new_y="NEXT"
+    )
     pdf.set_font("NotoDeva", size=10)
     pdf.multi_cell(
         w=pdf.epw,
@@ -230,6 +286,7 @@ def build_hindi_pdf(out_path: Path) -> None:
 
 # ── 3. Punjabi PDF ───────────────────────────────────────────────────
 
+
 def build_punjabi_pdf(out_path: Path) -> None:
     guru_font = ensure_font("NotoSansGurmukhi-Regular.ttf")
     pdf = FPDF()
@@ -239,9 +296,23 @@ def build_punjabi_pdf(out_path: Path) -> None:
     # Page 1
     pdf.add_page()
     pdf.set_font("NotoGuru", size=18)
-    pdf.cell(w=pdf.epw, h=14, text="ਪੀਜੀਐਸਐਲ ਪੀਡੀਐਫ ਟੂਲਕਿੱਟ", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(
+        w=pdf.epw,
+        h=14,
+        text="ਪੀਜੀਐਸਐਲ ਪੀਡੀਐਫ ਟੂਲਕਿੱਟ",
+        new_x="LMARGIN",
+        new_y="NEXT",
+        align="C",
+    )
     pdf.set_font("NotoGuru", size=12)
-    pdf.cell(w=pdf.epw, h=8, text="ਭਾਰਤੀ ਤਕਨਾਲੋਜੀ ਸੰਸਥਾਨ ਰੋਪੜ - ਕੰਪਿਊਟਰ ਸਾਇੰਸ ਵਿਭਾਗ", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(
+        w=pdf.epw,
+        h=8,
+        text="ਭਾਰਤੀ ਤਕਨਾਲੋਜੀ ਸੰਸਥਾਨ ਰੋਪੜ - ਕੰਪਿਊਟਰ ਸਾਇੰਸ ਵਿਭਾਗ",
+        new_x="LMARGIN",
+        new_y="NEXT",
+        align="C",
+    )
     pdf.ln(6)
 
     pdf.set_font("NotoGuru", size=14)
@@ -277,7 +348,9 @@ def build_punjabi_pdf(out_path: Path) -> None:
     # Page 2
     pdf.add_page()
     pdf.set_font("NotoGuru", size=16)
-    pdf.cell(w=pdf.epw, h=12, text="ਤਕਨੀਕੀ ਢਾਂਚਾ ਅਤੇ ਸੰਚਾਲਨ", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        w=pdf.epw, h=12, text="ਤਕਨੀਕੀ ਢਾਂਚਾ ਅਤੇ ਸੰਚਾਲਨ", new_x="LMARGIN", new_y="NEXT"
+    )
     pdf.set_font("NotoGuru", size=10)
     pdf.multi_cell(
         w=pdf.epw,
@@ -298,6 +371,7 @@ def build_punjabi_pdf(out_path: Path) -> None:
 
 # ── 4. Scanned PDF (Image-only, no digital text layer) ───────────────
 
+
 def build_scanned_pdf(out_path: Path) -> None:
     font = get_default_font(size=18)
     font_bold = get_default_font(size=22)
@@ -311,17 +385,43 @@ def build_scanned_pdf(out_path: Path) -> None:
     # Outer frame
     d1.rectangle([(30, 30), (w - 30, h - 30)], outline=(160, 160, 160), width=2)
     # Header box
-    d1.rectangle([(40, 40), (w - 40, 130)], fill=(235, 238, 242), outline=(140, 140, 150))
-    d1.text((60, 55), "INDIAN INSTITUTE OF TECHNOLOGY ROPAR", fill=(20, 20, 20), font=font_bold)
-    d1.text((60, 95), "Department of Computer Science & Engineering - Equipment Invoice", fill=(60, 60, 60), font=font_small)
+    d1.rectangle(
+        [(40, 40), (w - 40, 130)], fill=(235, 238, 242), outline=(140, 140, 150)
+    )
+    d1.text(
+        (60, 55),
+        "INDIAN INSTITUTE OF TECHNOLOGY ROPAR",
+        fill=(20, 20, 20),
+        font=font_bold,
+    )
+    d1.text(
+        (60, 95),
+        "Department of Computer Science & Engineering - Equipment Invoice",
+        fill=(60, 60, 60),
+        font=font_small,
+    )
 
-    d1.text((60, 160), "Invoice ID: IITRPR-CS509-2026-081", fill=(30, 30, 30), font=font)
+    d1.text(
+        (60, 160), "Invoice ID: IITRPR-CS509-2026-081", fill=(30, 30, 30), font=font
+    )
     d1.text((60, 200), "Date of Issue: 26 October 2026", fill=(30, 30, 30), font=font)
-    d1.text((60, 240), "Vendor: Advanced Computing Lab Supplies Ltd.", fill=(30, 30, 30), font=font)
-    d1.text((60, 280), "Billing Account: Project Grant PGSL-CS509", fill=(30, 30, 30), font=font)
+    d1.text(
+        (60, 240),
+        "Vendor: Advanced Computing Lab Supplies Ltd.",
+        fill=(30, 30, 30),
+        font=font,
+    )
+    d1.text(
+        (60, 280),
+        "Billing Account: Project Grant PGSL-CS509",
+        fill=(30, 30, 30),
+        font=font,
+    )
 
     # Table Header
-    d1.rectangle([(50, 330), (w - 50, 370)], fill=(220, 225, 230), outline=(150, 150, 150))
+    d1.rectangle(
+        [(50, 330), (w - 50, 370)], fill=(220, 225, 230), outline=(150, 150, 150)
+    )
     d1.text((70, 340), "Item No.", fill=(20, 20, 20), font=font_small)
     d1.text((180, 340), "Description", fill=(20, 20, 20), font=font_small)
     d1.text((550, 340), "Quantity", fill=(20, 20, 20), font=font_small)
@@ -342,21 +442,57 @@ def build_scanned_pdf(out_path: Path) -> None:
         y += 40
         d1.line([(50, y - 5), (w - 50, y - 5)], fill=(210, 210, 210))
 
-    d1.rectangle([(50, 580), (w - 50, 630)], fill=(240, 245, 240), outline=(120, 160, 120))
-    d1.text((70, 595), "Total Payable: INR 70,000.00", fill=(20, 80, 20), font=font_bold)
-    d1.text((70, 660), "Status: VERIFIED AND APPROVED BY AUDIT COMMITTEE", fill=(100, 30, 30), font=font_small)
+    d1.rectangle(
+        [(50, 580), (w - 50, 630)], fill=(240, 245, 240), outline=(120, 160, 120)
+    )
+    d1.text(
+        (70, 595), "Total Payable: INR 70,000.00", fill=(20, 80, 20), font=font_bold
+    )
+    d1.text(
+        (70, 660),
+        "Status: VERIFIED AND APPROVED BY AUDIT COMMITTEE",
+        fill=(100, 30, 30),
+        font=font_small,
+    )
 
     # Scanned Page 2: Lab Audit & Inspection Certificate
     im2 = Image.new("RGB", (w, h), (250, 249, 246))
     d2 = ImageDraw.Draw(im2)
     d2.rectangle([(30, 30), (w - 30, h - 30)], outline=(160, 160, 160), width=2)
-    d2.rectangle([(40, 40), (w - 40, 130)], fill=(245, 240, 235), outline=(150, 140, 130))
-    d2.text((60, 55), "LABORATORY AUDIT & COMPLIANCE REPORT", fill=(20, 20, 20), font=font_bold)
-    d2.text((60, 95), "Certificate of Compliance - Semester 1, Academic Year 2026-2027", fill=(60, 60, 60), font=font_small)
+    d2.rectangle(
+        [(40, 40), (w - 40, 130)], fill=(245, 240, 235), outline=(150, 140, 130)
+    )
+    d2.text(
+        (60, 55),
+        "LABORATORY AUDIT & COMPLIANCE REPORT",
+        fill=(20, 20, 20),
+        font=font_bold,
+    )
+    d2.text(
+        (60, 95),
+        "Certificate of Compliance - Semester 1, Academic Year 2026-2027",
+        fill=(60, 60, 60),
+        font=font_small,
+    )
 
-    d2.text((60, 160), "Inspection Reference: AUDIT-COMP-2026-Q3", fill=(30, 30, 30), font=font)
-    d2.text((60, 200), "Facility: PGSL Research Laboratory, Room 304", fill=(30, 30, 30), font=font)
-    d2.text((60, 240), "Audited Systems: 12 Workstations, 2 Scanner Stations", fill=(30, 30, 30), font=font)
+    d2.text(
+        (60, 160),
+        "Inspection Reference: AUDIT-COMP-2026-Q3",
+        fill=(30, 30, 30),
+        font=font,
+    )
+    d2.text(
+        (60, 200),
+        "Facility: PGSL Research Laboratory, Room 304",
+        fill=(30, 30, 30),
+        font=font,
+    )
+    d2.text(
+        (60, 240),
+        "Audited Systems: 12 Workstations, 2 Scanner Stations",
+        fill=(30, 30, 30),
+        font=font,
+    )
 
     d2.text((60, 300), "Audit Findings:", fill=(20, 20, 20), font=font)
     findings = [
@@ -370,13 +506,19 @@ def build_scanned_pdf(out_path: Path) -> None:
         d2.text((80, fy), finding, fill=(50, 50, 50), font=font_small)
         fy += 45
 
-    d2.text((60, 560), "Authorized Signatory: Head of Department", fill=(20, 20, 20), font=font)
+    d2.text(
+        (60, 560),
+        "Authorized Signatory: Head of Department",
+        fill=(20, 20, 20),
+        font=font,
+    )
     d2.text((60, 600), "Signature Date: 26-10-2026", fill=(60, 60, 60), font=font_small)
 
     im1.save(out_path, format="PDF", save_all=True, append_images=[im2])
 
 
 # ── 5. Images ────────────────────────────────────────────────────────
+
 
 def build_images(out_png: Path, out_jpg: Path) -> None:
     font = get_default_font(size=16)
@@ -390,27 +532,78 @@ def build_images(out_png: Path, out_jpg: Path) -> None:
 
     # Title Banner
     d1.rounded_rectangle([(20, 20), (w - 20, 75)], radius=8, fill=(35, 55, 95))
-    d1.text((40, 35), "PGSL PDF Toolkit Architecture Diagram", fill=(255, 255, 255), font=font_bold)
+    d1.text(
+        (40, 35),
+        "PGSL PDF Toolkit Architecture Diagram",
+        fill=(255, 255, 255),
+        font=font_bold,
+    )
 
     # Box 1: Explorer Panel
-    d1.rounded_rectangle([(40, 110), (220, 270)], radius=6, fill=(240, 244, 250), outline=(70, 110, 180), width=2)
+    d1.rounded_rectangle(
+        [(40, 110), (220, 270)],
+        radius=6,
+        fill=(240, 244, 250),
+        outline=(70, 110, 180),
+        width=2,
+    )
     d1.text((55, 125), "Explorer Panel", fill=(20, 40, 90), font=font)
-    d1.text((55, 160), "- File Browsing\n- Folder Select\n- Batch Pick", fill=(60, 60, 60), font=font_small)
+    d1.text(
+        (55, 160),
+        "- File Browsing\n- Folder Select\n- Batch Pick",
+        fill=(60, 60, 60),
+        font=font_small,
+    )
 
     # Box 2: Preview Panel
-    d1.rounded_rectangle([(260, 110), (440, 270)], radius=6, fill=(245, 250, 245), outline=(60, 150, 80), width=2)
+    d1.rounded_rectangle(
+        [(260, 110), (440, 270)],
+        radius=6,
+        fill=(245, 250, 245),
+        outline=(60, 150, 80),
+        width=2,
+    )
     d1.text((275, 125), "Preview Panel", fill=(20, 90, 40), font=font)
-    d1.text((275, 160), "- Page Render\n- Thumbnails\n- Multi-select", fill=(60, 60, 60), font=font_small)
+    d1.text(
+        (275, 160),
+        "- Page Render\n- Thumbnails\n- Multi-select",
+        fill=(60, 60, 60),
+        font=font_small,
+    )
 
     # Box 3: Toolkit Panel
-    d1.rounded_rectangle([(480, 110), (660, 270)], radius=6, fill=(253, 245, 245), outline=(200, 80, 80), width=2)
+    d1.rounded_rectangle(
+        [(480, 110), (660, 270)],
+        radius=6,
+        fill=(253, 245, 245),
+        outline=(200, 80, 80),
+        width=2,
+    )
     d1.text((495, 125), "Toolkit Panel", fill=(120, 30, 30), font=font)
-    d1.text((495, 160), "- Rotate / Reverse\n- Merge / Delete\n- Watermark / OCR", fill=(60, 60, 60), font=font_small)
+    d1.text(
+        (495, 160),
+        "- Rotate / Reverse\n- Merge / Delete\n- Watermark / OCR",
+        fill=(60, 60, 60),
+        font=font_small,
+    )
 
     # Session Hub Box
-    d1.rounded_rectangle([(140, 320), (560, 440)], radius=8, fill=(248, 240, 255), outline=(130, 70, 190), width=2)
-    d1.text((230, 335), "Session Hub & Background Worker", fill=(70, 30, 120), font=font)
-    d1.text((160, 375), "- Non-destructive temp copies   - Undo stack (max 10)\n- Qt signals communication          - Cancellation support", fill=(60, 60, 60), font=font_small)
+    d1.rounded_rectangle(
+        [(140, 320), (560, 440)],
+        radius=8,
+        fill=(248, 240, 255),
+        outline=(130, 70, 190),
+        width=2,
+    )
+    d1.text(
+        (230, 335), "Session Hub & Background Worker", fill=(70, 30, 120), font=font
+    )
+    d1.text(
+        (160, 375),
+        "- Non-destructive temp copies   - Undo stack (max 10)\n- Qt signals communication          - Cancellation support",
+        fill=(60, 60, 60),
+        font=font_small,
+    )
 
     # Connective arrows
     d1.line([(130, 270), (220, 320)], fill=(100, 100, 100), width=2)
@@ -429,10 +622,22 @@ def build_images(out_png: Path, out_jpg: Path) -> None:
     d2.rectangle([(35, 35), (w2 - 35, h2 - 35)], outline=(210, 190, 140), width=1)
 
     # Title
-    d2.text((120, 70), "INDIAN INSTITUTE OF TECHNOLOGY ROPAR", fill=(80, 50, 20), font=font_bold)
-    d2.text((220, 115), "Course CS509 - Software Engineering", fill=(100, 80, 50), font=font)
+    d2.text(
+        (120, 70),
+        "INDIAN INSTITUTE OF TECHNOLOGY ROPAR",
+        fill=(80, 50, 20),
+        font=font_bold,
+    )
+    d2.text(
+        (220, 115), "Course CS509 - Software Engineering", fill=(100, 80, 50), font=font
+    )
 
-    d2.text((160, 175), "Certificate of Test Fixture Verification", fill=(40, 40, 40), font=font_bold)
+    d2.text(
+        (160, 175),
+        "Certificate of Test Fixture Verification",
+        fill=(40, 40, 40),
+        font=font_bold,
+    )
     d2.text(
         (80, 230),
         "This sample document image serves as a visual verification asset for\n"

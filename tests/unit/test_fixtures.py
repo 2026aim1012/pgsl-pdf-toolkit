@@ -9,16 +9,19 @@ import pikepdf
 import pypdfium2 as pdfium
 from PIL import Image
 
-from pdf_toolkit.core.operations import (
+from pdf_toolkit.core import (
     apply_watermark,
     export_text,
+    images_to_pdf,
     merge_pdfs,
+    pdf_to_images,
     rotate_pages,
 )
 from pdf_toolkit.core.page_ops import reorder_pages
 from pdf_toolkit.gui.session import Session
 
 # ── Fixture Integrity Tests ──────────────────────────────────────────
+
 
 def test_english_pdf_fixture(english_pdf: Path):
     assert english_pdf.is_file()
@@ -118,6 +121,7 @@ def test_image_fixtures(sample_images: list[Path]):
 
 # ── Operations Integration Tests with Multilingual Fixtures ──────────
 
+
 def test_reorder_hindi_pdf(hindi_pdf: Path, tmp_path: Path):
     out = tmp_path / "hindi_reordered.pdf"
     reorder_pages(hindi_pdf, out, order=[1, 0])
@@ -184,3 +188,20 @@ def test_session_lifecycle_with_hindi_fixture(qapp, hindi_pdf: Path):
 
     session.close()
     session.cleanup()
+
+
+def test_images_and_pdf_roundtrip_fixtures(sample_images: list[Path], tmp_path: Path):
+    pdf_out = tmp_path / "sample_images.pdf"
+    images_to_pdf(None, pdf_out, None, images=sample_images)
+
+    assert pdf_out.is_file()
+    doc = pdfium.PdfDocument(str(pdf_out))
+    assert len(doc) == 2
+    doc.close()
+
+    # Convert back to images
+    img_out_dir = tmp_path / "extracted_images"
+    extracted = pdf_to_images(None, src_path=pdf_out, out_dir=img_out_dir)
+    assert len(extracted) == 2
+    for img_p in extracted:
+        assert img_p.is_file()

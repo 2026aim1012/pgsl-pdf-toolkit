@@ -33,7 +33,9 @@ class ProgressRecorder:
             raise Cancelled("Cancelled by test")
 
 
-def create_blank_pdf(path: Path, count: int, page_width: int = 200, page_height: int = 300) -> Path:
+def create_blank_pdf(
+    path: Path, count: int, page_width: int = 200, page_height: int = 300
+) -> Path:
     """Helper to generate a test PDF with `count` blank pages."""
     pdf = pikepdf.new()
     for _ in range(count):
@@ -43,6 +45,7 @@ def create_blank_pdf(path: Path, count: int, page_width: int = 200, page_height:
 
 
 # ── Rotate ────────────────────────────────────────────────────────────
+
 
 def test_rotate_all_pages(tmp_path):
     src = create_blank_pdf(tmp_path / "in.pdf", 3)
@@ -79,6 +82,7 @@ def test_rotate_missing_src_raises(tmp_path):
 
 # ── Reverse ───────────────────────────────────────────────────────────
 
+
 def test_reverse_pages(tmp_path):
     src = tmp_path / "in.pdf"
     pdf = pikepdf.new()
@@ -100,6 +104,7 @@ def test_reverse_pages(tmp_path):
 
 
 # ── Delete ────────────────────────────────────────────────────────────
+
 
 def test_delete_pages(tmp_path):
     src = tmp_path / "in.pdf"
@@ -134,6 +139,7 @@ def test_delete_no_pages_fails(tmp_path):
 
 # ── Merge ─────────────────────────────────────────────────────────────
 
+
 def test_merge_pdfs(tmp_path):
     f1 = create_blank_pdf(tmp_path / "f1.pdf", 2)
     f2 = create_blank_pdf(tmp_path / "f2.pdf", 3)
@@ -157,6 +163,7 @@ def test_merge_fewer_than_two_files_fails(tmp_path):
 
 
 # ── Watermark ─────────────────────────────────────────────────────────
+
 
 def test_apply_watermark(tmp_path):
     src = create_blank_pdf(tmp_path / "in.pdf", 2)
@@ -182,6 +189,7 @@ def test_apply_watermark_empty_text_fails(tmp_path):
 
 # ── Compress ──────────────────────────────────────────────────────────
 
+
 def test_compress_pdf(tmp_path):
     src = create_blank_pdf(tmp_path / "in.pdf", 5)
     out = tmp_path / "out.pdf"
@@ -201,6 +209,8 @@ def test_compress_same_file_fails(tmp_path):
 
 # ── Export Text ───────────────────────────────────────────────────────
 
+
 def test_export_text_nonexistent():
     result = export_text(None, src_path=Path("/tmp/nonexistent.pdf"))
     assert "No document open" in result
+
