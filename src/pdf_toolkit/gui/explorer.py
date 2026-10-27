@@ -212,15 +212,16 @@ class ExplorerPanel(QFrame):
             self.session.open(path)
 
     def _on_item_changed(self, _item: QListWidgetItem) -> None:
-        # A checkbox was ticked/unticked — tell the session which files
-        # are currently picked, so Merge / Image → PDF can use them.
-        picked = []
+        # Keep already-picked files in their current order; new ticks go at the end.
+        ticked = []
         for i in range(self.list.count()):
             it = self.list.item(i)
             if (it.data(KIND_ROLE) in ("pdf", "img")
                     and it.checkState() == Qt.CheckState.Checked):
-                picked.append(Path(it.data(PATH_ROLE)))
-        self.session.set_picked_files(picked)
+                ticked.append(Path(it.data(PATH_ROLE)))
+        kept = [p for p in self.session.picked_files if p in ticked]
+        added = [p for p in ticked if p not in kept]
+        self.session.set_picked_files(kept + added)
 
     def _on_context_menu(self, pos) -> None:
         item = self.list.itemAt(pos)
