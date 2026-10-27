@@ -315,7 +315,8 @@ class ExplorerPanel(QFrame):
     # Population
 
     def _populate(self, folder: Path | None) -> None:
-        self.list.blockSignals(True)   # avoid a storm of itemChanged
+        self.session.set_picked_files([]) # rebuilds the list so that nothing is ticked
+        self.list.blockSignals(True)
         self.list.clear()
 
         if folder is None or not Path(folder).is_dir():
