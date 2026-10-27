@@ -23,6 +23,14 @@ IMG_EXT = {".png", ".jpg", ".jpeg"}
 PATH_ROLE = Qt.ItemDataRole.UserRole
 KIND_ROLE = Qt.ItemDataRole.UserRole + 1        # "dir" | "pdf" | "img"
 
+def move_item(items: list, index: int, delta: int) -> tuple[list, int]:
+    """Move items[index] by delta (-1 up, +1 down). Returns (new_list, new_index)."""
+    new = index + delta
+    if not 0 <= new < len(items):
+        return list(items), index
+    out = list(items)
+    out[index], out[new] = out[new], out[index]
+    return out, new
 
 # Small helper function
 
