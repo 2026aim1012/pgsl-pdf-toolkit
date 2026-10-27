@@ -502,19 +502,23 @@ class Toolkit(QWidget):
         """Receive Explorer's picked-file list."""
         self.picked_files = list(files)
 
-        count = len(self.picked_files)
+        pdfs = [
+            p for p in self.picked_files
+            if p.suffix.lower() == ".pdf"
+        ]
+        count = len(pdfs)
 
         if count == 0:
             self.merge_info_label.setText(
-                "No files selected in Explorer."
+                "No PDFs selected in Explorer. Select at least 2 PDFs to merge."
             )
         elif count == 1:
             self.merge_info_label.setText(
-                "1 file selected. Select at least 2 PDFs to merge."
+                "1 PDF selected. Select at least 2 PDFs to merge."
             )
         else:
             self.merge_info_label.setText(
-                f"{count} files selected for merging."
+                f"{count} PDFs selected for merging."
             )
 
         self._refresh_ui()
@@ -536,7 +540,11 @@ class Toolkit(QWidget):
         has_document = bool(self.session.has_document)
 
         has_selection = len(self.selected_pages) > 0
-        has_merge_files = len(self.picked_files) >= 2
+        pdfs = [
+            p for p in self.picked_files
+            if p.suffix.lower() == ".pdf"
+        ]
+        has_merge_files = len(pdfs) >= 2
 
         # General document operations.
         self.scope_combo.setEnabled(
@@ -582,7 +590,8 @@ class Toolkit(QWidget):
         )
 
         self.merge_button.setEnabled(
-            not busy
+            has_document
+            and not busy
             and has_merge_files
             and self._has_operation("merge")
         )
@@ -883,14 +892,23 @@ class Toolkit(QWidget):
         if not callable(operation):
             return
 
-        if len(self.picked_files) < 2:
+        if not self.session.has_document:
+            self._show_warning(
+                "Merge PDFs",
+                "Open a PDF document before merging files.",
+            )
+            return
+
+        files = [
+            p for p in self.picked_files
+            if p.suffix.lower() == ".pdf"
+        ]
+        if len(files) < 2:
             self._show_warning(
                 "Merge PDFs",
                 "Select at least two PDF files in Explorer.",
             )
             return
-
-        files = list(self.picked_files)
 
         self.session.apply(
             operation,
