@@ -27,6 +27,7 @@ IMG_EXT = {".png", ".jpg", ".jpeg"}
 PATH_ROLE = Qt.ItemDataRole.UserRole
 KIND_ROLE = Qt.ItemDataRole.UserRole + 1  # "dir" | "pdf" | "img"
 
+
 def move_item(items: list, index: int, delta: int) -> tuple[list, int]:
     """Move items[index] by delta (-1 up, +1 down). Returns (new_list, new_index)."""
     new = index + delta
@@ -35,6 +36,7 @@ def move_item(items: list, index: int, delta: int) -> tuple[list, int]:
     out = list(items)
     out[index], out[new] = out[new], out[index]
     return out, new
+
 
 # Small helper function
 
@@ -65,6 +67,7 @@ class ElidedLabel(QLabel):
         )
         super().setText(elided)
 
+
 class MergeOrderDialog(QDialog):
     """Lets the user arrange files (top = first) before merging or converting."""
 
@@ -79,8 +82,8 @@ class MergeOrderDialog(QDialog):
         down.clicked.connect(lambda: self._move(+1))
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel)
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
@@ -116,6 +119,7 @@ class MergeOrderDialog(QDialog):
 
     def ordered_files(self) -> list[Path]:
         return list(self._files)
+
 
 # The panel
 
@@ -208,7 +212,8 @@ class ExplorerPanel(QFrame):
         picked = self.session.picked_files
         self.order_btn.setEnabled(idle and len(picked) >= 2)
         self.img_pdf_btn.setEnabled(
-            idle and any(p.suffix.lower() in IMG_EXT for p in picked))
+            idle and any(p.suffix.lower() in IMG_EXT for p in picked)
+        )
 
     def _on_choose_order(self) -> None:
         dlg = MergeOrderDialog(self.session.picked_files, self)
@@ -225,8 +230,7 @@ class ExplorerPanel(QFrame):
             self.session.set_folder(Path(folder))
 
     def _on_images_to_pdf(self) -> None:
-        images = [p for p in self.session.picked_files
-                if p.suffix.lower() in IMG_EXT]
+        images = [p for p in self.session.picked_files if p.suffix.lower() in IMG_EXT]
         if not images:
             self.session.statusMessage.emit("Tick one or more images first.")
             return
@@ -237,7 +241,8 @@ class ExplorerPanel(QFrame):
 
         start = (self.session.folder or images[0].parent) / "images.pdf"
         chosen, _ = QFileDialog.getSaveFileName(
-            self, "Save PDF as", str(start), "PDF (*.pdf)")
+            self, "Save PDF as", str(start), "PDF (*.pdf)"
+        )
         if not chosen:
             return
         out_path = Path(chosen)
@@ -255,7 +260,7 @@ class ExplorerPanel(QFrame):
     def _on_images_pdf_done(self, result: Path) -> None:
         self.session.open(result)
         if self.session.folder:
-            self._populate(self.session.folder)   # show the new file in the list
+            self._populate(self.session.folder)  # show the new file in the list
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         # Single click only selects. Opening it would prevent
@@ -315,7 +320,7 @@ class ExplorerPanel(QFrame):
     # Population
 
     def _populate(self, folder: Path | None) -> None:
-        self.session.set_picked_files([]) # rebuilds the list so that nothing is ticked
+        self.session.set_picked_files([])  # rebuilds the list so that nothing is ticked
         self.list.blockSignals(True)
         self.list.clear()
 

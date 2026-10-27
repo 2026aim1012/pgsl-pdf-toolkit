@@ -14,6 +14,7 @@ def test_order_button_needs_two_files(qapp):
 
     session.cleanup()
 
+
 def test_images_button_needs_an_image(qapp):
     session = Session()
     panel = ExplorerPanel(session)
@@ -25,6 +26,7 @@ def test_images_button_needs_an_image(qapp):
     assert panel.img_pdf_btn.isEnabled()
 
     session.cleanup()
+
 
 def test_refresh_clears_picked_files(qapp, tmp_path):
     session = Session()
