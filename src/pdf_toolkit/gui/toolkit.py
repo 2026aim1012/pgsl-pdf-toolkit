@@ -143,10 +143,16 @@ class Toolkit(QWidget):
 
         scope_layout.addRow("Apply to:", self.scope_combo)
 
+        # Page count line, e.g. "4 pages · 1 selected".
+        # It gets its own full-width row (addRow with one widget spans both
+        # columns). Squeezed into the narrow right column next to a
+        # "Pages:" label, the text wrapped onto a second line that the form
+        # layout did not make room for, so it was cut off.
         self.page_info_label = QLabel("No document open")
+        self.page_info_label.setObjectName("pageInfo")
         self.page_info_label.setWordWrap(True)
 
-        scope_layout.addRow("Pages:", self.page_info_label)
+        scope_layout.addRow(self.page_info_label)
 
         self.content_layout.addWidget(scope_group)
 
@@ -236,6 +242,9 @@ class Toolkit(QWidget):
 
         self.watermark_text = QLineEdit()
         self.watermark_text.setPlaceholderText("Watermark text...")
+        # Re-check the Apply button while typing; otherwise it stays
+        # greyed out until some other event refreshes the panel.
+        self.watermark_text.textChanged.connect(lambda _: self._refresh_ui())
 
         watermark_options = QFormLayout()
 
@@ -453,21 +462,17 @@ class Toolkit(QWidget):
         """Update the human-readable page information label."""
 
         if self.page_count <= 0:
-            self.page_info_label.setText("No document open.")
+            self.page_info_label.setText("No document open")
             return
 
+        # Short text so it fits on one line, e.g. "4 pages · 1 selected"
+        pages = "1 page" if self.page_count == 1 else f"{self.page_count} pages"
         selected = len(self.selected_pages)
 
         if selected:
-            self.page_info_label.setText(
-                f"{self.page_count} pages total; "
-                f"{selected} selected."
-            )
+            self.page_info_label.setText(f"{pages} · {selected} selected")
         else:
-            self.page_info_label.setText(
-                f"{self.page_count} pages total; "
-                "no thumbnail selection."
-            )
+            self.page_info_label.setText(f"{pages} · none selected")
 
     def _has_operation(self, name: str) -> bool:
         """Return True if a backend operation has been supplied."""
