@@ -1,9 +1,12 @@
 """Image <-> PDF conversion (FR-04, FR-05)."""
+import os
+import tempfile
 from pathlib import Path
-import os, tempfile
+
 import img2pdf
-from PIL import Image
 import pypdfium2 as pdfium
+from PIL import Image
+
 
 def _progress(reporter, done, total, msg=""):
     reporter(done, total, msg)

@@ -1,5 +1,6 @@
 from pdf_toolkit.gui.explorer import move_item
 
+
 def test_move_down():
     assert move_item(["a", "b", "c"], 0, 1) == (["b", "a", "c"], 1)
 
