@@ -18,8 +18,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pdf_toolkit.gui.session import Session
 from pdf_toolkit.core.converter import images_to_pdf
+from pdf_toolkit.gui.session import Session
 
 PDF_EXT = {".pdf"}
 IMG_EXT = {".png", ".jpg", ".jpeg"}
