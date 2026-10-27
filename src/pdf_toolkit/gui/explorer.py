@@ -20,10 +20,11 @@ PDF_EXT = {".pdf"}
 IMG_EXT = {".png", ".jpg", ".jpeg"}
 
 PATH_ROLE = Qt.ItemDataRole.UserRole
-KIND_ROLE = Qt.ItemDataRole.UserRole + 1        # "dir" | "pdf" | "img"
+KIND_ROLE = Qt.ItemDataRole.UserRole + 1  # "dir" | "pdf" | "img"
 
 
 # Small helper function
+
 
 class ElidedLabel(QLabel):
     """QLabel that shortens long paths with '…' instead of widening the panel."""
@@ -32,8 +33,7 @@ class ElidedLabel(QLabel):
         super().__init__(parent)
         self._full = text
         self.setMinimumWidth(10)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored,
-                           QSizePolicy.Policy.Preferred)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._refresh()
 
     def setFullText(self, text: str) -> None:
@@ -47,13 +47,14 @@ class ElidedLabel(QLabel):
 
     def _refresh(self) -> None:
         fm = QFontMetrics(self.font())
-        elided = fm.elidedText(self._full,
-                               Qt.TextElideMode.ElideMiddle,
-                               max(20, self.width()))
+        elided = fm.elidedText(
+            self._full, Qt.TextElideMode.ElideMiddle, max(20, self.width())
+        )
         super().setText(elided)
 
 
 # The panel
+
 
 class ExplorerPanel(QFrame):
     def __init__(self, session: Session, parent=None):
@@ -91,10 +92,8 @@ class ExplorerPanel(QFrame):
 
         self.list = QListWidget()
         self.list.setObjectName("explorer")
-        self.list.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.list.setContextMenuPolicy(
-            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         layout.addWidget(self.list, stretch=1)
 
         hint = QLabel("Ctrl + click or drag to select multiple files")
@@ -116,8 +115,7 @@ class ExplorerPanel(QFrame):
     # Session callbacks
 
     def _on_folder_changed(self, folder) -> None:
-        self.path_label.setFullText(
-            folder.as_posix() if folder else "No folder opened")
+        self.path_label.setFullText(folder.as_posix() if folder else "No folder opened")
         self._populate(folder)
 
     def _on_busy_changed(self, busy: bool) -> None:
@@ -128,10 +126,8 @@ class ExplorerPanel(QFrame):
     # Widget callbacks
 
     def _on_open_folder(self) -> None:
-        start = (str(self.session.folder) if self.session.folder
-                 else str(Path.home()))
-        folder = QFileDialog.getExistingDirectory(
-            self, "Open folder", start)
+        start = str(self.session.folder) if self.session.folder else str(Path.home())
+        folder = QFileDialog.getExistingDirectory(self, "Open folder", start)
         if folder:
             self.session.set_folder(Path(folder))
 
@@ -154,8 +150,10 @@ class ExplorerPanel(QFrame):
         picked = []
         for i in range(self.list.count()):
             it = self.list.item(i)
-            if (it.data(KIND_ROLE) in ("pdf", "img")
-                    and it.checkState() == Qt.CheckState.Checked):
+            if (
+                it.data(KIND_ROLE) in ("pdf", "img")
+                and it.checkState() == Qt.CheckState.Checked
+            ):
                 picked.append(Path(it.data(PATH_ROLE)))
         self.session.set_picked_files(picked)
 
@@ -176,9 +174,11 @@ class ExplorerPanel(QFrame):
         if chosen is act_open:
             self._on_item_clicked(item)
         elif chosen is act_tick:
-            new_state = (Qt.CheckState.Unchecked
-                         if item.checkState() == Qt.CheckState.Checked
-                         else Qt.CheckState.Checked)
+            new_state = (
+                Qt.CheckState.Unchecked
+                if item.checkState() == Qt.CheckState.Checked
+                else Qt.CheckState.Checked
+            )
             for it in self.list.selectedItems():
                 if it.flags() & Qt.ItemFlag.ItemIsUserCheckable:
                     it.setCheckState(new_state)
@@ -188,7 +188,7 @@ class ExplorerPanel(QFrame):
     # Population
 
     def _populate(self, folder: Path | None) -> None:
-        self.list.blockSignals(True)   # avoid a storm of itemChanged
+        self.list.blockSignals(True)  # avoid a storm of itemChanged
         self.list.clear()
 
         if folder is None or not Path(folder).is_dir():

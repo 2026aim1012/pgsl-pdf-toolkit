@@ -39,7 +39,9 @@ def main() -> None:
     app.setOrganizationName("IIT Ropar")
 
     # Set accessible default UI font
-    font = QFont("-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif")
+    font = QFont(
+        "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+    )
     font.setPointSize(10)
     app.setFont(font)
 

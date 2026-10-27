@@ -38,8 +38,10 @@ def _report(reporter: Reporter | None, done: int, total: int) -> None:
 #  Reorder
 # ----------------------------------------------------------------------
 
-def reorder_pages(src: Path, out: Path, reporter: Reporter | None = None, *,
-                  order: Sequence[int]) -> None:
+
+def reorder_pages(
+    src: Path, out: Path, reporter: Reporter | None = None, *, order: Sequence[int]
+) -> None:
     """Write `src` to `out` with its pages in a new order.
 
     `order` lists the old page numbers (0-based) in their new order, and must
@@ -98,9 +100,16 @@ def move_pages_order(page_count: int, moving: Sequence[int], to: int) -> list[in
 #  Insert
 # ----------------------------------------------------------------------
 
-def insert_pages(src: Path, out: Path, reporter: Reporter | None = None, *,
-                 insert_path: Path, at: int,
-                 pages: Sequence[int] | None = None) -> None:
+
+def insert_pages(
+    src: Path,
+    out: Path,
+    reporter: Reporter | None = None,
+    *,
+    insert_path: Path,
+    at: int,
+    pages: Sequence[int] | None = None,
+) -> None:
     """Write `src` to `out` with pages from another PDF inserted.
 
     insert_path  the PDF to take pages from (may be the same file as src)
