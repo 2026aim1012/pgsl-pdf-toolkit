@@ -160,6 +160,13 @@ class ExplorerPanel(QFrame):
             Qt.ContextMenuPolicy.CustomContextMenu)
         layout.addWidget(self.list, stretch=1)
 
+        btn_row = QHBoxLayout()
+        self.order_btn = QPushButton("Order…")
+        self.order_btn.setToolTip("Choose the order of ticked files")
+        btn_row.addWidget(self.order_btn)
+        layout.addLayout(btn_row)
+        self._update_buttons()
+
         hint = QLabel("Ctrl + click or drag to select multiple files")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
@@ -171,10 +178,12 @@ class ExplorerPanel(QFrame):
         self.list.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.list.itemChanged.connect(self._on_item_changed)
         self.list.customContextMenuRequested.connect(self._on_context_menu)
+        self.order_btn.clicked.connect(self._on_choose_order)
 
     def _connect_session(self) -> None:
         self.session.folderChanged.connect(self._on_folder_changed)
         self.session.busyChanged.connect(self._on_busy_changed)
+        self.session.pickedFilesChanged.connect(lambda _files: self._update_buttons())
 
     # Session callbacks
 
@@ -187,6 +196,17 @@ class ExplorerPanel(QFrame):
         # While a background task runs, freeze file picking
         self.open_btn.setEnabled(not busy)
         self.list.setEnabled(not busy)
+        self._update_buttons()
+
+    def _update_buttons(self) -> None:
+        idle = not self.session.busy
+        self.order_btn.setEnabled(idle and len(self.session.picked_files) >= 2)
+
+    def _on_choose_order(self) -> None:
+        dlg = MergeOrderDialog(self.session.picked_files, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.session.set_picked_files(dlg.ordered_files())
+            self.session.statusMessage.emit("Merge order updated.")
 
     # Widget callbacks
 
