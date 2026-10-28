@@ -1,12 +1,17 @@
 """Image <-> PDF conversion (FR-04, FR-05)."""
+
+import os
+import tempfile
 from pathlib import Path
-import os, tempfile
+
 import img2pdf
-from PIL import Image
 import pypdfium2 as pdfium
+from PIL import Image
+
 
 def _progress(reporter, done, total, msg=""):
     reporter(done, total, msg)
+
 
 def _flatten(path, tmpdir):
     """PNGs with transparency make img2pdf fail; flatten them onto white."""
@@ -19,6 +24,7 @@ def _flatten(path, tmpdir):
         bg.save(out, quality=95)
         return str(out)
     return str(path)
+
 
 def images_to_pdf(reporter, images, out_path) -> Path:
     images = [Path(p) for p in images]
@@ -40,6 +46,7 @@ def images_to_pdf(reporter, images, out_path) -> Path:
         part.unlink(missing_ok=True)  # no half-written file on cancel/error
     _progress(reporter, len(images), len(images), f"Created {out_path.name}")
     return out_path
+
 
 def pdf_to_images(reporter, pdf, out_dir, dpi=150) -> list[Path]:
     pdf, out_dir = Path(pdf), Path(out_dir)

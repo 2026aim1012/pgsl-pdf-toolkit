@@ -4,8 +4,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -14,13 +17,25 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
 )
-from session import Session
+
+from pdf_toolkit.core.converter import images_to_pdf
+from pdf_toolkit.gui.session import Session
 
 PDF_EXT = {".pdf"}
 IMG_EXT = {".png", ".jpg", ".jpeg"}
 
 PATH_ROLE = Qt.ItemDataRole.UserRole
 KIND_ROLE = Qt.ItemDataRole.UserRole + 1  # "dir" | "pdf" | "img"
+
+
+def move_item(items: list, index: int, delta: int) -> tuple[list, int]:
+    """Move items[index] by delta (-1 up, +1 down). Returns (new_list, new_index)."""
+    new = index + delta
+    if not 0 <= new < len(items):
+        return list(items), index
+    out = list(items)
+    out[index], out[new] = out[new], out[index]
+    return out, new
 
 
 # Small helper function
@@ -51,6 +66,59 @@ class ElidedLabel(QLabel):
             self._full, Qt.TextElideMode.ElideMiddle, max(20, self.width())
         )
         super().setText(elided)
+
+
+class MergeOrderDialog(QDialog):
+    """Lets the user arrange files (top = first) before merging or converting."""
+
+    def __init__(self, files, parent=None, title="Choose file order"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self._files = [Path(f) for f in files]
+
+        self.list = QListWidget()
+        up, down = QPushButton("Move up"), QPushButton("Move down")
+        up.clicked.connect(lambda: self._move(-1))
+        down.clicked.connect(lambda: self._move(+1))
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        side = QVBoxLayout()
+        side.addWidget(up)
+        side.addWidget(down)
+        side.addStretch()
+        row = QHBoxLayout()
+        row.addWidget(self.list, 1)
+        row.addLayout(side)
+
+        root = QVBoxLayout(self)
+        root.addWidget(QLabel("Files are used from top to bottom."))
+        root.addLayout(row)
+        root.addWidget(buttons)
+        self.resize(420, 320)
+        self._refill(0)
+
+    def _refill(self, current: int) -> None:
+        self.list.clear()
+        for p in self._files:
+            item = QListWidgetItem(p.name)
+            item.setToolTip(str(p))
+            self.list.addItem(item)
+        self.list.setCurrentRow(current)
+
+    def _move(self, delta: int) -> None:
+        row = self.list.currentRow()
+        if row < 0:
+            return
+        self._files, new_row = move_item(self._files, row, delta)
+        self._refill(new_row)
+
+    def ordered_files(self) -> list[Path]:
+        return list(self._files)
 
 
 # The panel
@@ -96,6 +164,18 @@ class ExplorerPanel(QFrame):
         self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         layout.addWidget(self.list, stretch=1)
 
+        btn_row = QHBoxLayout()
+        self.order_btn = QPushButton("Order…")
+        self.order_btn.setToolTip("Choose the order of ticked files")
+        btn_row.addWidget(self.order_btn)
+
+        self.img_pdf_btn = QPushButton("Images → PDF")
+        self.img_pdf_btn.setToolTip("Combine the ticked images into one PDF")
+        btn_row.addWidget(self.img_pdf_btn)
+
+        layout.addLayout(btn_row)
+        self._update_buttons()
+
         hint = QLabel("Ctrl + click or drag to select multiple files")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
@@ -107,10 +187,13 @@ class ExplorerPanel(QFrame):
         self.list.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.list.itemChanged.connect(self._on_item_changed)
         self.list.customContextMenuRequested.connect(self._on_context_menu)
+        self.order_btn.clicked.connect(self._on_choose_order)
+        self.img_pdf_btn.clicked.connect(self._on_images_to_pdf)
 
     def _connect_session(self) -> None:
         self.session.folderChanged.connect(self._on_folder_changed)
         self.session.busyChanged.connect(self._on_busy_changed)
+        self.session.pickedFilesChanged.connect(lambda _files: self._update_buttons())
 
     # Session callbacks
 
@@ -122,6 +205,21 @@ class ExplorerPanel(QFrame):
         # While a background task runs, freeze file picking
         self.open_btn.setEnabled(not busy)
         self.list.setEnabled(not busy)
+        self._update_buttons()
+
+    def _update_buttons(self) -> None:
+        idle = not self.session.busy
+        picked = self.session.picked_files
+        self.order_btn.setEnabled(idle and len(picked) >= 2)
+        self.img_pdf_btn.setEnabled(
+            idle and any(p.suffix.lower() in IMG_EXT for p in picked)
+        )
+
+    def _on_choose_order(self) -> None:
+        dlg = MergeOrderDialog(self.session.picked_files, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.session.set_picked_files(dlg.ordered_files())
+            self.session.statusMessage.emit("Merge order updated.")
 
     # Widget callbacks
 
@@ -131,8 +229,41 @@ class ExplorerPanel(QFrame):
         if folder:
             self.session.set_folder(Path(folder))
 
+    def _on_images_to_pdf(self) -> None:
+        images = [p for p in self.session.picked_files if p.suffix.lower() in IMG_EXT]
+        if not images:
+            self.session.statusMessage.emit("Tick one or more images first.")
+            return
+
+        dlg = MergeOrderDialog(images, self, title="Choose page order")
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        start = (self.session.folder or images[0].parent) / "images.pdf"
+        chosen, _ = QFileDialog.getSaveFileName(
+            self, "Save PDF as", str(start), "PDF (*.pdf)"
+        )
+        if not chosen:
+            return
+        out_path = Path(chosen)
+        if out_path.suffix.lower() != ".pdf":
+            out_path = out_path.with_suffix(".pdf")
+
+        self.session.run(
+            images_to_pdf,
+            on_done=self._on_images_pdf_done,
+            description="Converting images to PDF…",
+            images=dlg.ordered_files(),
+            out_path=out_path,
+        )
+
+    def _on_images_pdf_done(self, result: Path) -> None:
+        self.session.open(result)
+        if self.session.folder:
+            self._populate(self.session.folder)  # show the new file in the list
+
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
-        # Single click only selects. Do not open — that would prevent
+        # Single click only selects. Opening it would prevent
         # Ctrl + click multi-selection for batch tools.
         pass
 
@@ -145,17 +276,18 @@ class ExplorerPanel(QFrame):
             self.session.open(path)
 
     def _on_item_changed(self, _item: QListWidgetItem) -> None:
-        # A checkbox was ticked/unticked — tell the session which files
-        # are currently picked, so Merge / Image → PDF can use them.
-        picked = []
+        # Keep already-picked files in their current order; new ticks go at the end.
+        ticked = []
         for i in range(self.list.count()):
             it = self.list.item(i)
             if (
                 it.data(KIND_ROLE) in ("pdf", "img")
                 and it.checkState() == Qt.CheckState.Checked
             ):
-                picked.append(Path(it.data(PATH_ROLE)))
-        self.session.set_picked_files(picked)
+                ticked.append(Path(it.data(PATH_ROLE)))
+        kept = [p for p in self.session.picked_files if p in ticked]
+        added = [p for p in ticked if p not in kept]
+        self.session.set_picked_files(kept + added)
 
     def _on_context_menu(self, pos) -> None:
         item = self.list.itemAt(pos)
@@ -188,7 +320,8 @@ class ExplorerPanel(QFrame):
     # Population
 
     def _populate(self, folder: Path | None) -> None:
-        self.list.blockSignals(True)  # avoid a storm of itemChanged
+        self.session.set_picked_files([])  # rebuilds the list so that nothing is ticked
+        self.list.blockSignals(True)
         self.list.clear()
 
         if folder is None or not Path(folder).is_dir():
