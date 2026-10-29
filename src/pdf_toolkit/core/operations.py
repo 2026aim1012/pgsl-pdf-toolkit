@@ -11,6 +11,7 @@ Follows the team backend contract:
 from __future__ import annotations
 
 import io
+import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -191,6 +192,42 @@ def merge_pdfs(
     _report(reporter, len(merge_files), len(merge_files), "Merge complete")
 
 
+# Fonts for the watermark text. English text uses a bold system font
+# (Windows, macOS or Linux), and if none is found, Pillow's own font.
+# Hindi text needs the Devanagari font that ships with the project;
+# it has no English letters, so it is only used for Hindi.
+_RESOURCES = Path(__file__).resolve().parent.parent / "resources"
+_DEVANAGARI_FONT = _RESOURCES / "NotoSansDevanagari-Regular.ttf"
+_WATERMARK_FONTS = [
+    Path("C:/Windows/Fonts/arialbd.ttf"),
+    Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+    Path("/Library/Fonts/Arial Bold.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+]
+
+
+def _has_devanagari(text: str) -> bool:
+    """True if the text contains Hindi (Devanagari) letters."""
+    return any("\u0900" <= ch <= "\u097f" for ch in text)
+
+
+def _watermark_font(
+    text: str, size: int
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Return a font of `size` pixels that can draw `text`."""
+    candidates = [_DEVANAGARI_FONT] if _has_devanagari(text) else _WATERMARK_FONTS
+    for path in candidates:
+        if path.is_file():
+            try:
+                return ImageFont.truetype(str(path), size)
+            except OSError:
+                continue
+    # Last resort: Pillow's built-in font, at the requested size. Without a
+    # size it is only 10 pixels, which made the watermark almost invisible
+    # on Macs (the old code only looked for Linux fonts).
+    return ImageFont.load_default(size=size)
+
+
 def _create_watermark_buffer(
     width_pt: float,
     height_pt: float,
@@ -208,30 +245,24 @@ def _create_watermark_buffer(
     d = ImageDraw.Draw(txt_im)
 
     alpha = int(max(0.01, min(1.0, opacity)) * 255)
-    font_size = max(14, int(min(w_px, h_px) / 10))
+    font_size = max(14, int(min(w_px, h_px) / 8))
+    font = _watermark_font(text, font_size)
 
-    font: ImageFont.ImageFont | ImageFont.FreeTypeFont
-    font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
-        "/usr/share/fonts/truetype/lato/Lato-Bold.ttf",
-    ]
-    loaded = False
-    for fp in font_paths:
-        if Path(fp).is_file():
-            try:
-                font = ImageFont.truetype(fp, font_size)
-                loaded = True
-                break
-            except OSError:
-                continue
-    if not loaded:
-        font = ImageFont.load_default()
+    # Shrink the font if the text, turned by `rotation`, would run off the
+    # page. Leaves a margin of 10% on each side.
+    angle = math.radians(rotation)
+    cos_a, sin_a = abs(math.cos(angle)), abs(math.sin(angle))
+    limits = [0.8 * w_px / cos_a if cos_a > 1e-6 else math.inf]
+    limits.append(0.8 * h_px / sin_a if sin_a > 1e-6 else math.inf)
+    max_width = min(limits)
+    text_width = d.textlength(text, font=font)
+    if text_width > max_width:
+        smaller = max(10, int(font_size * max_width / text_width))
+        font = _watermark_font(text, smaller)
 
-    bbox = d.textbbox((0, 0), text, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    cx, cy = txt_canvas_size // 2, txt_canvas_size // 2
-    d.text((cx - tw // 2, cy - th // 2), text, fill=(100, 100, 100, alpha), font=font)
+    # anchor="mm" puts the middle of the text exactly on the centre point.
+    centre = (txt_canvas_size // 2, txt_canvas_size // 2)
+    d.text(centre, text, fill=(100, 100, 100, alpha), font=font, anchor="mm")
 
     rotated = txt_im.rotate(rotation, resample=Image.Resampling.BILINEAR)
     crop_x = (rotated.width - w_px) // 2
