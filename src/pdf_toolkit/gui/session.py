@@ -99,6 +99,7 @@ def count_pages(path: Path) -> int:
 
 # ── Background Worker & Progress Reporter ─────────────────────────────
 
+
 class Reporter:
     """
     Passed into core tools so they can report progress and check if user clicked Cancel.
@@ -163,27 +164,28 @@ class WorkerThread(QThread):
 
 # ── Central Session Hub ──────────────────────────────────────────────
 
+
 class Session(QObject):
     # Document state signals
-    documentChanged = Signal(object)      # Path | None (current working copy)
+    documentChanged = Signal(object)  # Path | None (current working copy)
     documentClosed = Signal()
     modifiedChanged = Signal(bool)
-    fileInfoChanged = Signal(str)         # e.g. "Lecture1.pdf · 2.4 MB"
+    fileInfoChanged = Signal(str)  # e.g. "Lecture1.pdf · 2.4 MB"
     undoAvailable = Signal(bool)
 
     # Explorer signals
-    folderChanged = Signal(object)        # Path | None
-    pickedFilesChanged = Signal(list)     # list[Path] for batch tools
+    folderChanged = Signal(object)  # Path | None
+    pickedFilesChanged = Signal(list)  # list[Path] for batch tools
 
     # Preview signals
-    pageChanged = Signal(int)             # 0-based page index
-    pageCountChanged = Signal(int)        # total pages
-    pageSelectionChanged = Signal(list)   # list[int] selected thumbnails
+    pageChanged = Signal(int)  # 0-based page index
+    pageCountChanged = Signal(int)  # total pages
+    pageSelectionChanged = Signal(list)  # list[int] selected thumbnails
 
     # Worker & status signals (bottom bar)
-    busyChanged = Signal(bool)            # True while worker is running
-    progress = Signal(int, int)           # (done, total)
-    progressPercent = Signal(int)         # 0..100
+    busyChanged = Signal(bool)  # True while worker is running
+    progress = Signal(int, int)  # (done, total)
+    progressPercent = Signal(int)  # 0..100
     statusMessage = Signal(str)
     errorMessage = Signal(str)
 
@@ -196,12 +198,12 @@ class Session(QObject):
         self._temp_counter = 0
 
         # Document state
-        self.source: Path | None = None       # Original file on disk
-        self.current: Path | None = None      # Working copy in temp dir
+        self.source: Path | None = None  # Original file on disk
+        self.current: Path | None = None  # Working copy in temp dir
         self._saved_copy: Path | None = None  # Reference to compare if modified
         self.page_count: int = 0
-        self.page: int = 0                    # 0-based active page index
-        self.selected_pages: list[int] = []   # 0-based selected thumbnails
+        self.page: int = 0  # 0-based active page index
+        self.selected_pages: list[int] = []  # 0-based selected thumbnails
 
         # Explorer state
         self.folder: Path | None = None
@@ -349,8 +351,13 @@ class Session(QObject):
 
     # ── Running Operations ───────────────────────────────────────────
 
-    def apply(self, op: Callable[..., Any], keep_page: bool = True,
-              description: str = "", **opts: Any) -> bool:
+    def apply(
+        self,
+        op: Callable[..., Any],
+        keep_page: bool = True,
+        description: str = "",
+        **opts: Any,
+    ) -> bool:
         """
         Run a modifying PDF operation in the background and push current state
         to the undo stack.
@@ -376,10 +383,18 @@ class Session(QObject):
                 raise
             return out
 
-        return self._start_worker(job, lambda new_doc: self._applied(new_doc, keep_page))
+        return self._start_worker(
+            job, lambda new_doc: self._applied(new_doc, keep_page)
+        )
 
-    def run(self, fn: Callable[..., Any], on_done: Callable[[Any], None] | None = None,
-              description: str = "", *args: Any, **kwargs: Any) -> bool:
+    def run(
+        self,
+        fn: Callable[..., Any],
+        on_done: Callable[[Any], None] | None = None,
+        description: str = "",
+        *args: Any,
+        **kwargs: Any,
+    ) -> bool:
         """Run a read-only background task (OCR, export text, etc.)."""
         if self.busy:
             self.statusMessage.emit("Please wait for the current task to finish.")
@@ -422,8 +437,9 @@ class Session(QObject):
 
     # ── Helpers ──────────────────────────────────────────────────────
 
-    def _start_worker(self, job: Callable[[Reporter], Any],
-                      on_done: Callable[[Any], None] | None) -> bool:
+    def _start_worker(
+        self, job: Callable[[Reporter], Any], on_done: Callable[[Any], None] | None
+    ) -> bool:
         w = WorkerThread(job)
         w.progress.connect(self.progress)
         w.percentage.connect(self.progressPercent)
@@ -481,15 +497,18 @@ class Session(QObject):
 
         self._set_current(out, keep_page=keep_page)
 
-    def _set_current(self, path: Path | None, page_count: int | None = None,
-                     keep_page: bool = False) -> None:
+    def _set_current(
+        self, path: Path | None, page_count: int | None = None, keep_page: bool = False
+    ) -> None:
         self.current = path
         if path is None:
             self.page_count = 0
             self.page = 0
             self.selected_pages = []
         else:
-            self.page_count = page_count if page_count is not None else count_pages(path)
+            self.page_count = (
+                page_count if page_count is not None else count_pages(path)
+            )
             self.page = min(self.page, max(0, self.page_count - 1)) if keep_page else 0
             self.selected_pages = []
 

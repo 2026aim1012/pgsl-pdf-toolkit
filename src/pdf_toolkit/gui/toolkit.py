@@ -30,12 +30,12 @@ by session.py.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -51,7 +51,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
 
 Operation = Callable[..., Any]
 
@@ -124,9 +123,7 @@ class Toolkit(QWidget):
 
         title = QLabel("PDF Toolkit")
         title.setObjectName("toolkitTitle")
-        title.setStyleSheet(
-            "font-size: 18px; font-weight: bold; padding-bottom: 4px;"
-        )
+        title.setStyleSheet("font-size: 18px; font-weight: bold; padding-bottom: 4px;")
         root.addWidget(title)
 
         scroll = QScrollArea()
@@ -152,10 +149,16 @@ class Toolkit(QWidget):
 
         scope_layout.addRow("Apply to:", self.scope_combo)
 
+        # Page count line, e.g. "4 pages · 1 selected".
+        # It gets its own full-width row (addRow with one widget spans both
+        # columns). Squeezed into the narrow right column next to a
+        # "Pages:" label, the text wrapped onto a second line that the form
+        # layout did not make room for, so it was cut off.
         self.page_info_label = QLabel("No document open")
+        self.page_info_label.setObjectName("pageInfo")
         self.page_info_label.setWordWrap(True)
 
-        scope_layout.addRow("Pages:", self.page_info_label)
+        scope_layout.addRow(self.page_info_label)
 
         self.content_layout.addWidget(scope_group)
 
@@ -203,9 +206,7 @@ class Toolkit(QWidget):
         delete_group = QGroupBox("Delete Pages")
         delete_layout = QVBoxLayout(delete_group)
 
-        delete_hint = QLabel(
-            "Delete the pages selected in the preview."
-        )
+        delete_hint = QLabel("Delete the pages selected in the preview.")
         delete_hint.setWordWrap(True)
 
         self.delete_button = QPushButton("Delete Selected Pages")
@@ -348,6 +349,9 @@ class Toolkit(QWidget):
 
         self.watermark_text = QLineEdit()
         self.watermark_text.setPlaceholderText("Watermark text...")
+        # Re-check the Apply button while typing; otherwise it stays
+        # greyed out until some other event refreshes the panel.
+        self.watermark_text.textChanged.connect(lambda _: self._refresh_ui())
 
         watermark_options = QFormLayout()
 
@@ -361,12 +365,8 @@ class Toolkit(QWidget):
         self.watermark_rotation.setValue(45)
         self.watermark_rotation.setSuffix("°")
 
-        watermark_options.addRow(
-            "Opacity:", self.watermark_opacity
-        )
-        watermark_options.addRow(
-            "Rotation:", self.watermark_rotation
-        )
+        watermark_options.addRow("Opacity:", self.watermark_opacity)
+        watermark_options.addRow("Rotation:", self.watermark_rotation)
 
         self.watermark_button = QPushButton("Apply Watermark")
         self.watermark_button.clicked.connect(self._watermark)
@@ -442,9 +442,7 @@ class Toolkit(QWidget):
         self.session.undoAvailable.connect(self._on_undo_available)
         self.session.pageCountChanged.connect(self._on_page_count_changed)
         self.session.pickedFilesChanged.connect(self._on_picked_files_changed)
-        self.session.pageSelectionChanged.connect(
-            self._on_page_selection_changed
-        )
+        self.session.pageSelectionChanged.connect(self._on_page_selection_changed)
         self.session.documentChanged.connect(self._on_document_changed)
         self.session.errorMessage.connect(self._on_operation_error)
 
@@ -458,9 +456,7 @@ class Toolkit(QWidget):
 
     def _on_undo_available(self, available: bool) -> None:
         """Update Undo button state."""
-        self.undo_button.setEnabled(
-            available and not self.session.busy
-        )
+        self.undo_button.setEnabled(available and not self.session.busy)
 
     def _on_page_count_changed(self, count: int) -> None:
         """Receive page count from Session."""
@@ -496,16 +492,15 @@ class Toolkit(QWidget):
         """Clear pending compression feedback if a background job fails."""
         if self._compression_pending:
             self._compression_pending = False
-            self.compress_size_label.setText("Compression failed; see the error message.")
+            self.compress_size_label.setText(
+                "Compression failed; see the error message."
+            )
 
     def _on_picked_files_changed(self, files: list[Path]) -> None:
         """Receive Explorer's picked-file list."""
         self.picked_files = list(files)
 
-        pdfs = [
-            p for p in self.picked_files
-            if p.suffix.lower() == ".pdf"
-        ]
+        pdfs = [p for p in self.picked_files if p.suffix.lower() == ".pdf"]
         count = len(pdfs)
 
         if count == 0:
@@ -517,9 +512,7 @@ class Toolkit(QWidget):
                 "1 PDF selected. Select at least 2 PDFs to merge."
             )
         else:
-            self.merge_info_label.setText(
-                f"{count} PDFs selected for merging."
-            )
+            self.merge_info_label.setText(f"{count} PDFs selected for merging.")
 
         self._refresh_ui()
 
@@ -540,27 +533,18 @@ class Toolkit(QWidget):
         has_document = bool(self.session.has_document)
 
         has_selection = len(self.selected_pages) > 0
-        pdfs = [
-            p for p in self.picked_files
-            if p.suffix.lower() == ".pdf"
-        ]
+        pdfs = [p for p in self.picked_files if p.suffix.lower() == ".pdf"]
         has_merge_files = len(pdfs) >= 2
 
         # General document operations.
-        self.scope_combo.setEnabled(
-            has_document and not busy
-        )
+        self.scope_combo.setEnabled(has_document and not busy)
 
         self.rotate_button.setEnabled(
-            has_document
-            and not busy
-            and self._has_operation("rotate")
+            has_document and not busy and self._has_operation("rotate")
         )
 
         self.reverse_button.setEnabled(
-            has_document
-            and not busy
-            and self._has_operation("reverse")
+            has_document and not busy and self._has_operation("reverse")
         )
 
         self.delete_button.setEnabled(
@@ -578,15 +562,11 @@ class Toolkit(QWidget):
         )
 
         self.ocr_button.setEnabled(
-            has_document
-            and not busy
-            and self._has_operation("ocr")
+            has_document and not busy and self._has_operation("ocr")
         )
 
         self.export_text_button.setEnabled(
-            has_document
-            and not busy
-            and self._has_operation("export_text")
+            has_document and not busy and self._has_operation("export_text")
         )
 
         self.merge_button.setEnabled(
@@ -608,7 +588,8 @@ class Toolkit(QWidget):
         self.insert_pick_button.setEnabled(not busy)
         self.insert_at.setEnabled(has_document and not busy)
         self.insert_button.setEnabled(
-            has_document and not busy
+            has_document
+            and not busy
             and bool(self.insert_path_label.property("insert_path"))
             and self._has_operation("insert")
         )
@@ -618,30 +599,23 @@ class Toolkit(QWidget):
         self.insert_at.setMaximum(max(1, self.page_count + 1))
 
         # Undo has its own Session signal, but busy still takes precedence.
-        self.undo_button.setEnabled(
-            not busy
-            and bool(self.session.can_undo)
-        )
+        self.undo_button.setEnabled(not busy and bool(self.session.can_undo))
 
     def _update_page_info(self) -> None:
         """Update the human-readable page information label."""
 
         if self.page_count <= 0:
-            self.page_info_label.setText("No document open.")
+            self.page_info_label.setText("No document open")
             return
 
         selected = len(self.selected_pages)
 
+        # Short text so it fits on one line, e.g. "4 pages · 1 selected"
+        pages = "1 page" if self.page_count == 1 else f"{self.page_count} pages"
         if selected:
-            self.page_info_label.setText(
-                f"{self.page_count} pages total; "
-                f"{selected} selected."
-            )
+            self.page_info_label.setText(f"{pages} · {selected} selected")
         else:
-            self.page_info_label.setText(
-                f"{self.page_count} pages total; "
-                "no thumbnail selection."
-            )
+            self.page_info_label.setText(f"{pages} · none selected")
 
     def _has_operation(self, name: str) -> bool:
         """Return True if a backend operation has been supplied."""
@@ -759,7 +733,9 @@ class Toolkit(QWidget):
         if not callable(operation):
             return
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Choose images to convert", "",
+            self,
+            "Choose images to convert",
+            "",
             "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp)",
         )
         if not paths:
@@ -796,7 +772,9 @@ class Toolkit(QWidget):
         operation = self.operations.get("pdf_to_images")
         if not callable(operation) or not self.session.current:
             return
-        out_dir = QFileDialog.getExistingDirectory(self, "Choose output folder for images")
+        out_dir = QFileDialog.getExistingDirectory(
+            self, "Choose output folder for images"
+        )
         if not out_dir:
             return
         self.session.run(
@@ -866,12 +844,8 @@ class Toolkit(QWidget):
         reply = QMessageBox.question(
             self,
             "Delete Pages",
-            (
-                f"Delete {len(pages)} selected page"
-                f"{'' if len(pages) == 1 else 's'}?"
-            ),
-            QMessageBox.StandardButton.Yes
-            | QMessageBox.StandardButton.No,
+            (f"Delete {len(pages)} selected page{'' if len(pages) == 1 else 's'}?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
 
@@ -899,10 +873,7 @@ class Toolkit(QWidget):
             )
             return
 
-        files = [
-            p for p in self.picked_files
-            if p.suffix.lower() == ".pdf"
-        ]
+        files = [p for p in self.picked_files if p.suffix.lower() == ".pdf"]
         if len(files) < 2:
             self._show_warning(
                 "Merge PDFs",
@@ -977,9 +948,7 @@ class Toolkit(QWidget):
         else:
             text = str(result)
 
-        self.requestStatus.emit(
-            f"OCR completed ({len(text)} characters)."
-        )
+        self.requestStatus.emit(f"OCR completed ({len(text)} characters).")
 
         # Keep the full result available without imposing a backend
         # result structure on the Session layer.
@@ -1011,9 +980,7 @@ class Toolkit(QWidget):
         else:
             text = str(result)
 
-        self.requestStatus.emit(
-            f"Text extraction completed ({len(text)} characters)."
-        )
+        self.requestStatus.emit(f"Text extraction completed ({len(text)} characters).")
 
         self._show_text_result("Extracted Text", text)
 
@@ -1048,9 +1015,7 @@ class Toolkit(QWidget):
         dialog = QMessageBox(self)
         dialog.setWindowTitle(title)
         dialog.setIcon(QMessageBox.Icon.Information)
-        dialog.setText(
-            text[:4000] if text else "(No text returned.)"
-        )
+        dialog.setText(text[:4000] if text else "(No text returned.)")
 
         if len(text) > 4000:
             dialog.setInformativeText(
