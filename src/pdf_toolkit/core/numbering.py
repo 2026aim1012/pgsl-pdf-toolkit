@@ -162,6 +162,7 @@ def page_numbers(
     font_size: float = 11.0,
     margin: float = 36.0,
     format: str = "{n}",
+    start_page: int = 1,
     **kwargs: Any,
 ) -> None:
     """
@@ -191,14 +192,19 @@ def page_numbers(
         Distance in points from the edge of the page (default 36.0 pt).
     format:
         Format string template. Supports '{n}', '{page}', and '{total}'.
+    start_page:
+        1-based index of the document page where numbering begins (default 1).
     """
     src_path = Path(src)
     out_path = Path(out)
     if not src_path.is_file():
         raise FileNotFoundError(f"Source file not found: {src_path}")
 
+    start_page = int(kwargs.get("start_page", start_page))
     if start < 0:
         raise ValueError("start page number must be non-negative.")
+    if start_page < 1:
+        raise ValueError("start_page must be at least 1.")
     if font_size <= 0:
         raise ValueError("font_size must be positive.")
     if margin < 0:
@@ -238,8 +244,14 @@ def page_numbers(
         if total == 0:
             raise ValueError("Cannot number pages of an empty PDF.")
 
-        target_pages = sorted(set(pages)) if pages is not None else list(range(total))
-        if pages is not None and not target_pages:
+        if pages is not None:
+            target_pages = [
+                p for p in sorted(set(pages)) if 0 <= p < total and p >= start_page - 1
+            ]
+        else:
+            target_pages = list(range(start_page - 1, total))
+
+        if not target_pages:
             raise ValueError("No valid pages specified for page numbering.")
 
         page_texts: dict[int, str] = {}

@@ -108,6 +108,8 @@ def test_main_window_creation(qapp):
     assert window.explorer_panel is not None
     assert window.preview_panel is not None
     assert window.toolkit_panel is not None
+    assert window.toolkit_panel.number_start.value() == 1
+    assert window.toolkit_panel.number_start_page.value() == 1
     assert window.status_bar_widget is not None
 
     # Actions
@@ -132,6 +134,7 @@ def test_main_window_document_lifecycle(qapp, tmp_path):
 
     # Open document
     assert session.open(pdf_path)
+    assert window.toolkit_panel.number_start_page.maximum() == 1
     assert pdf_path.name in window.windowTitle()
     assert window.act_save.isEnabled()
     assert window.act_save_as.isEnabled()

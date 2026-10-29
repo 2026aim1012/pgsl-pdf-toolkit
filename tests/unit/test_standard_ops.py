@@ -213,4 +213,3 @@ def test_compress_same_file_fails(tmp_path):
 def test_export_text_nonexistent():
     result = export_text(None, src_path=Path("/tmp/nonexistent.pdf"))
     assert "No document open" in result
-
