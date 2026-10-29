@@ -19,15 +19,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-THUMB_SIZE = QSize(60, 80)  # box each thumbnail picture fits into
-DRAWN = Qt.ItemDataRole.UserRole  # marks thumbnails already rendered
+from pdf_toolkit.core.page_ops import move_pages_order, reorder_pages
+
+THUMB_SIZE = QSize(60, 80)          # box each thumbnail picture fits into
+DRAWN = Qt.ItemDataRole.UserRole    # marks thumbnails already rendered
+PAGES_MIME = "application/x-pgsl-pages"   # tags our own thumbnail drags
 
 
 def render_page(pdf, index: int, box_w: int, box_h: int, dpr: float = 1.0) -> QPixmap:
     """Render page `index` of `pdf` so it fits inside box_w x box_h pixels."""
     page = pdf[index]
     try:
-        width_pt, height_pt = page.get_size()  # PDF units (1/72 inch)
+        width_pt, height_pt = page.get_size()      # PDF units (1/72 inch)
         scale = min(box_w / width_pt, box_h / height_pt)
         # dpr is 2 on high-DPI screens: draw extra pixels so the page stays sharp
         image = page.render(scale=scale * dpr).to_pil().convert("RGB")
@@ -35,13 +38,8 @@ def render_page(pdf, index: int, box_w: int, box_h: int, dpr: float = 1.0) -> QP
         page.close()
 
     # Pillow image -> Qt image -> Qt pixmap (what a QLabel can display)
-    qimage = QImage(
-        image.tobytes(),
-        image.width,
-        image.height,
-        image.width * 3,
-        QImage.Format.Format_RGB888,
-    ).copy()
+    qimage = QImage(image.tobytes(), image.width, image.height,
+                    image.width * 3, QImage.Format.Format_RGB888).copy()
     pixmap = QPixmap.fromImage(qimage)
     pixmap.setDevicePixelRatio(dpr)
     return pixmap
@@ -187,8 +185,11 @@ class PreviewPanel(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
-        self.pdf = None  # the open pdfium.PdfDocument (None = nothing open)
-        self.index = 0  # page currently shown (0-based)
+        self.pdf = None        # the open pdfium.PdfDocument (None = nothing open)
+        self.index = 0         # page currently shown (0-based)
+        # After a drag-reorder: (page count, page to show, pages to select)
+        # once the reordered file arrives. None = nothing waiting.
+        self._after_move = None
 
         self._build_ui()
         self._connect_signals()
@@ -214,9 +215,8 @@ class PreviewPanel(QWidget):
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # "Ignored" = the layout decides the size. Without it, a big page
         # picture would stop the window from being made smaller.
-        self.page_label.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
-        )
+        self.page_label.setSizePolicy(QSizePolicy.Policy.Ignored,
+                                      QSizePolicy.Policy.Ignored)
         layout.addWidget(self.page_label, stretch=1)
 
         # 2) Navigation row:  ‹  [ 1 ]  / 391  ›
@@ -230,45 +230,31 @@ class PreviewPanel(QWidget):
         self.page_box.setFixedWidth(60)
         self.page_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.page_box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.page_box.setKeyboardTracking(False)  # jump on Enter, not every key
+        self.page_box.setKeyboardTracking(False)   # jump on Enter, not every key
 
         self.total_label = QLabel("/ 0")
 
         nav = QHBoxLayout()
-        nav.addStretch(1)  # stretches on both sides
-        nav.addWidget(self.prev_btn)  # keep the row centred
+        nav.addStretch(1)                          # stretches on both sides
+        nav.addWidget(self.prev_btn)               # keep the row centred
         nav.addWidget(self.page_box)
         nav.addWidget(self.total_label)
         nav.addWidget(self.next_btn)
         nav.addStretch(1)
         layout.addLayout(nav)
 
-        # 3) Thumbnail strip (a list shown as one horizontal row of icons)
-        self.thumbs = QListWidget()
-        self.thumbs.setObjectName("thumbs")
-        self.thumbs.setViewMode(QListWidget.ViewMode.IconMode)
-        self.thumbs.setFlow(QListWidget.Flow.LeftToRight)
-        self.thumbs.setWrapping(False)  # a single row
-        self.thumbs.setMovement(QListWidget.Movement.Static)  # items can't be dragged
-        self.thumbs.setIconSize(THUMB_SIZE)
-        self.thumbs.setSpacing(6)
-        self.thumbs.setUniformItemSizes(True)
-        self.thumbs.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection
-        )  # Ctrl / Shift / drag
-        self.thumbs.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.thumbs.setFixedHeight(THUMB_SIZE.height() + 50)
+        # 3) Thumbnail strip: one row of page pictures; drag them to reorder
+        self.thumbs = ThumbStrip()
 
-        strip = QFrame()  # dashed box around the strip (style.qss)
+        strip = QFrame()                  # dashed box around the strip (style.qss)
         strip.setObjectName("thumbStrip")
         strip_layout = QVBoxLayout(strip)
         strip_layout.setContentsMargins(6, 4, 6, 2)
         strip_layout.addWidget(self.thumbs)
         layout.addWidget(strip)
 
-        hint = QLabel(
-            "Click a thumbnail to jump · Ctrl + click or drag to select multiple pages"
-        )
+        hint = QLabel("Click a thumbnail to jump · Ctrl + click to select "
+                      "several · Drag to move pages")
         hint.setObjectName("hint")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(hint)
@@ -333,7 +319,7 @@ class PreviewPanel(QWidget):
                 # The Session deletes old temp files, and Windows can't delete
                 # a file that is still open.
                 self.pdf = pdfium.PdfDocument(Path(path).read_bytes())
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 self._show_empty(f"Could not display this file:\n{e}")
                 return
 
@@ -356,7 +342,7 @@ class PreviewPanel(QWidget):
 
     def _set_page_count(self, count: int):
         """Update '/ 391' and the highest number the page box accepts."""
-        self.page_box.blockSignals(True)  # don't trigger set_page here
+        self.page_box.blockSignals(True)       # don't trigger set_page here
         self.page_box.setRange(1, max(1, count))
         self.page_box.blockSignals(False)
         self.total_label.setText(f"/ {count}")
@@ -387,8 +373,8 @@ class PreviewPanel(QWidget):
     def _select_thumbs(self, pages: list):
         """The Session changed the page selection (e.g. cleared after an edit)."""
         if self._selected_rows() == list(pages):
-            return  # already showing this selection
-        self.thumbs.blockSignals(True)  # don't report it back again
+            return                              # already showing this selection
+        self.thumbs.blockSignals(True)          # don't report it back again
         self.thumbs.clearSelection()
         for row in pages:
             item = self.thumbs.item(row)
@@ -401,7 +387,7 @@ class PreviewPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _on_thumb_clicked(self, row: int):
-        if row >= 0:  # -1 means "no thumbnail"
+        if row >= 0:                            # -1 means "no thumbnail"
             self.session.set_page(row)
 
     def _on_thumb_selection(self):
@@ -464,18 +450,17 @@ class PreviewPanel(QWidget):
         """Render the current page as large as fits, centred in the label."""
         if self.pdf is None:
             return
-        box_w = self.page_label.width() - 40  # small margin around the page
+        box_w = self.page_label.width() - 40    # small margin around the page
         box_h = self.page_label.height() - 20
         if box_w < 20 or box_h < 20:
-            return  # not on screen yet / too small
-        pixmap = render_page(
-            self.pdf, self.index, box_w, box_h, self.devicePixelRatioF()
-        )
+            return                              # not on screen yet / too small
+        pixmap = render_page(self.pdf, self.index, box_w, box_h,
+                             self.devicePixelRatioF())
         self.page_label.setPixmap(pixmap)
 
     def _fill_thumbs(self, count: int):
         """Add one blank thumbnail per page; real pictures are drawn later."""
-        self.thumbs.blockSignals(True)  # rebuilding, not a user action
+        self.thumbs.blockSignals(True)          # rebuilding, not a user action
         self.thumbs.clear()
         blank = QPixmap(THUMB_SIZE)
         blank.fill(QColor("white"))
@@ -495,20 +480,15 @@ class PreviewPanel(QWidget):
             if item.data(DRAWN):
                 continue
             if self.thumbs.visualItemRect(item).intersects(visible_area):
-                pixmap = render_page(
-                    self.pdf,
-                    row,
-                    THUMB_SIZE.width(),
-                    THUMB_SIZE.height(),
-                    self.devicePixelRatioF(),
-                )
+                pixmap = render_page(self.pdf, row, THUMB_SIZE.width(),
+                                     THUMB_SIZE.height(), self.devicePixelRatioF())
                 item.setIcon(QIcon(pixmap))
                 item.setData(DRAWN, True)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._page_timer.start()  # redraw the page to fit the new size
-        self._thumb_timer.start()  # more thumbnails may be visible now
+        self._page_timer.start()    # redraw the page to fit the new size
+        self._thumb_timer.start()   # more thumbnails may be visible now
 
 
 # ----------------------------------------------------------------------
