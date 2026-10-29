@@ -238,9 +238,7 @@ def page_numbers(
         if total == 0:
             raise ValueError("Cannot number pages of an empty PDF.")
 
-        target_pages = (
-            sorted(set(pages)) if pages is not None else list(range(total))
-        )
+        target_pages = sorted(set(pages)) if pages is not None else list(range(total))
         if pages is not None and not target_pages:
             raise ValueError("No valid pages specified for page numbering.")
 
