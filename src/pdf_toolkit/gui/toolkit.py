@@ -328,6 +328,9 @@ class Toolkit(QWidget):
         self.number_start = QSpinBox()
         self.number_start.setRange(1, 999999)
         self.number_start.setValue(1)
+        self.number_start_page = QSpinBox()
+        self.number_start_page.setRange(1, 999999)
+        self.number_start_page.setValue(1)
         self.number_numerals = QComboBox()
         self.number_numerals.addItem("Latin (1, 2, 3)", "latin")
         self.number_numerals.addItem("Devanagari (१, २, ३)", "devanagari")
@@ -335,7 +338,8 @@ class Toolkit(QWidget):
         self.number_button.clicked.connect(self._page_numbers)
 
         numbers_layout.addRow("Position:", self.number_position)
-        numbers_layout.addRow("Start at:", self.number_start)
+        numbers_layout.addRow("Start number:", self.number_start)
+        numbers_layout.addRow("Start page:", self.number_start_page)
         numbers_layout.addRow("Numerals:", self.number_numerals)
         numbers_layout.addRow(self.number_button)
         self.content_layout.addWidget(numbers_group)
@@ -597,6 +601,7 @@ class Toolkit(QWidget):
             has_document and not busy and self._has_operation("page_numbers")
         )
         self.insert_at.setMaximum(max(1, self.page_count + 1))
+        self.number_start_page.setMaximum(max(1, self.page_count))
 
         # Undo has its own Session signal, but busy still takes precedence.
         self.undo_button.setEnabled(not busy and bool(self.session.can_undo))
@@ -724,6 +729,7 @@ class Toolkit(QWidget):
             description="Adding page numbers...",
             position=self.number_position.currentData(),
             start=self.number_start.value(),
+            start_page=self.number_start_page.value(),
             numerals=self.number_numerals.currentData(),
         )
 
