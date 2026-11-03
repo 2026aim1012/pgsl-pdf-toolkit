@@ -17,15 +17,31 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QPoint, QSettings, QSize, Qt
-from PySide6.QtGui import QAction, QFontDatabase, QIcon, QKeySequence, QShortcut
+from pdf_toolkit.platform_compat import init_platform
+
+init_platform()
+
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSettings, QSize, Qt
+from PySide6.QtGui import (
+    QAction,
+    QFontDatabase,
+    QIcon,
+    QKeyEvent,
+    QKeySequence,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
+    QSpinBox,
     QSplitter,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -158,6 +174,7 @@ class MainWindow(QMainWindow):
     def _setup_window(self) -> None:
         self.setWindowTitle(APP_TITLE)
         self.setMinimumSize(960, 540)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
 
         # Restore window geometry (size & position) from QSettings
         self._restore_window_geometry()
@@ -171,6 +188,7 @@ class MainWindow(QMainWindow):
 
     def _build_layout(self) -> None:
         central_container = QWidget(self)
+        central_container.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self.setCentralWidget(central_container)
 
         root_layout = QVBoxLayout(central_container)
@@ -181,6 +199,8 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.splitter.setObjectName("mainSplitter")
         self.splitter.setChildrenCollapsible(False)
+        self.splitter.setOpaqueResize(True)
+        self.splitter.setHandleWidth(1)
 
         # 1. Left: Explorer Panel
         self.explorer_panel = ExplorerPanel(self.session, parent=self.splitter)
@@ -345,6 +365,16 @@ class MainWindow(QMainWindow):
         self.act_about.setToolTip("About PGSL PDF Toolkit")
         self.act_about.triggered.connect(self._show_about_dialog)
         help_menu.addAction(self.act_about)
+
+        # Store app menus and ensure only one menu is ever shown at a time
+        self._app_menus = [file_menu, edit_menu, view_menu, help_menu]
+        for m in self._app_menus:
+            m.aboutToShow.connect(
+                lambda current=m: [
+                    other.hide() for other in self._app_menus if other is not current
+                ]
+            )
+            m.installEventFilter(self)
 
         # ── Corner Widget: Dark/Light Mode Switch Button ──
         self.theme_btn = QPushButton("Dark Mode", self)
@@ -516,6 +546,70 @@ class MainWindow(QMainWindow):
         """Configure button focus policies for clean mouse and keyboard behavior."""
         for btn in self.findChildren(QPushButton):
             btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+
+    def _close_all_menus(self) -> None:
+        """Properly dismiss all open menus and reset menubar popup state."""
+        app = QApplication.instance()
+        if hasattr(self, "_app_menus"):
+            for m in self._app_menus:
+                if m.isVisible():
+                    esc_ev = QKeyEvent(
+                        QEvent.Type.KeyPress,
+                        Qt.Key.Key_Escape,
+                        Qt.KeyboardModifier.NoModifier,
+                    )
+                    if app:
+                        app.sendEvent(m, esc_ev)
+                    if m.isVisible():
+                        m.hide()
+
+        mb = self.menuBar()
+        if mb and app:
+            app.sendEvent(mb, QEvent(QEvent.Type.Leave))
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Close open menu when mouse moves completely out of menu and menubar range."""
+        if (
+            isinstance(watched, QMenu)
+            and hasattr(self, "_app_menus")
+            and watched in self._app_menus
+            and event.type() == QEvent.Type.MouseMove
+        ):
+            pos = event.globalPosition().toPoint()
+            m_rect = QRect(watched.mapToGlobal(QPoint(0, 0)), watched.size())
+            mb = self.menuBar()
+            mb_rect = QRect(mb.mapToGlobal(QPoint(0, 0)), mb.size()) if mb else QRect()
+            in_menu_zone = (
+                m_rect.contains(pos)
+                or mb_rect.contains(pos)
+                or any(
+                    other.isVisible()
+                    and QRect(other.mapToGlobal(QPoint(0, 0)), other.size()).contains(
+                        pos
+                    )
+                    for other in self._app_menus
+                )
+            )
+            if not in_menu_zone:
+                self._close_all_menus()
+        return super().eventFilter(watched, event)
+
+    def mousePressEvent(self, event: Any) -> None:
+        """Clicking somewhere empty in the window reverts all active UI states."""
+        self._revert_ui_state()
+        super().mousePressEvent(event)
+
+    def _revert_ui_state(self) -> None:
+        """Clear keyboard focus and close any open menus."""
+        self._close_all_menus()
+
+        app = QApplication.instance()
+        if app:
+            focused = app.focusWidget()
+            if focused is not None and not isinstance(
+                focused, (QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox)
+            ):
+                focused.clearFocus()
 
     def closeEvent(self, event: Any) -> None:
         """Prompt to save if modified, then cleanup temporary session state."""

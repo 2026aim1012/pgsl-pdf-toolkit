@@ -9,6 +9,11 @@ and displays the integrated MainWindow.
 import sys
 from pathlib import Path
 
+from pdf_toolkit.platform_compat import init_platform
+
+# Ensure platform configuration (e.g., XCB / libxcb-cursor on Linux) runs before Qt initialization
+init_platform()
+
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
@@ -43,6 +48,8 @@ def load_stylesheet(dark_mode: bool = False) -> str:
 
 
 def main() -> None:
+    init_platform()
+
     app = QApplication(sys.argv)
     app.setApplicationName("PGSL PDF Toolkit")
     app.setApplicationDisplayName("PGSL PDF Toolkit — IIT Ropar")

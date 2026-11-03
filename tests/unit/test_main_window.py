@@ -277,6 +277,12 @@ def test_dark_mode_toggle(qapp):
 
 
 def test_ui_interaction_and_focus_revert(qapp):
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QPushButton
+
+    from pdf_toolkit.gui.preview import SmoothPageLabel
+
     session = Session()
     window = MainWindow(session=session)
     window.show()
@@ -288,10 +294,42 @@ def test_ui_interaction_and_focus_revert(qapp):
     window.theme_btn.click()
     assert not window.theme_btn.hasFocus()
 
-    # 3. Menubar actions exist and are accessible
+    # 3. All buttons should have TabFocus policy (keyboard navigation works, mouse click doesn't stick)
+    buttons = window.findChildren(QPushButton)
+    assert len(buttons) >= 15
+    for btn in buttons:
+        assert btn.focusPolicy() == Qt.FocusPolicy.TabFocus
+
+    # 4. Menubar actions exist and top menus are managed
     assert window.menuBar() is not None
     assert len(window.menuBar().actions()) >= 4
+    assert hasattr(window, "_app_menus")
+    assert len(window._app_menus) == 4
+    for menu in window._app_menus:
+        assert menu.parent() is window.menuBar()
+
+    # 5. Opening one menu closes any previously open menu
+    m0, m1 = window._app_menus[0], window._app_menus[1]
+    m0.show()
+    assert m0.isVisible()
+    m1.aboutToShow.emit()
+    assert not m0.isVisible()
+
+    # 6. Clicking empty area in window reverts active UI state and closes open menus
+    m1.show()
+    assert m1.isVisible()
+    press_ev = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(window.rect().center()),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    window.mousePressEvent(press_ev)
+    assert not m1.isVisible()
+
+    # 7. Smooth preview scaling label is active
+    assert isinstance(window.preview_panel.page_label, SmoothPageLabel)
 
     window.close()
     session.cleanup()
-

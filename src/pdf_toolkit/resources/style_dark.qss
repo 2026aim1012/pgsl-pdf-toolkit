@@ -481,7 +481,7 @@ QSplitter::handle:horizontal {
 
 QSplitter::handle:hover {
     background-color: #3b82f6;
-    width: 3px;
+    width: 1px;
 }
 
 /* ── Status Bar ───────────────────────────────────────────────────── */
@@ -544,14 +544,18 @@ QMenuBar::item {
     color: #f8fafc;
 }
 
-QMenuBar::item:hover,
-QMenuBar::item:selected {
+QMenuBar::item:hover {
     background-color: #1e293b;
     color: #60a5fa;
 }
 
 QMenuBar::item:pressed {
     background-color: #334155;
+    color: #60a5fa;
+}
+
+QMenuBar:focus ::item:selected {
+    background-color: #1e293b;
     color: #60a5fa;
 }
 
