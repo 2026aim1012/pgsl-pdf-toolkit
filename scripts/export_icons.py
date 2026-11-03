@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Developer utility to export icons from QtAwesome into static resource PNGs.
 
 Usage:
@@ -69,7 +68,9 @@ def export_icon(
     icon = qta.icon(icon_name, color=color)
     pixmap = icon.pixmap(QSize(size, size))
     pixmap.save(str(output_path), "PNG")
-    print(f"Exported: {icon_name} -> {output_path.relative_to(Path.cwd())} ({size}x{size}, {color})")
+    print(
+        f"Exported: {icon_name} -> {output_path.relative_to(Path.cwd())} ({size}x{size}, {color})"
+    )
     return output_path
 
 
