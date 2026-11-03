@@ -34,7 +34,6 @@ from collections.abc import Callable
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -46,9 +45,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSlider,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -197,26 +196,56 @@ class Toolkit(QWidget):
         title.setStyleSheet("font-size: 18px; font-weight: bold; padding-bottom: 4px;")
         root.addWidget(title)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        # Use tabs instead of a single tall, scrollable list. The Pages
+        # category has its own compact sub-tabs because it contains the
+        # largest number of controls.
+        self.category_tabs = QTabWidget()
+        self.category_tabs.setDocumentMode(True)
+        root.addWidget(self.category_tabs, 1)
 
-        content = QWidget()
-        self.content_layout = QVBoxLayout(content)
-        self.content_layout.setContentsMargins(2, 2, 2, 2)
-        self.content_layout.setSpacing(8)
+        self.pages_section = QWidget()
+        pages_root = QVBoxLayout(self.pages_section)
+        pages_root.setContentsMargins(4, 4, 4, 4)
+        pages_root.setSpacing(6)
 
-        # Five top-level, keyboard-accessible folding sections.
-        self.pages_section, self.pages_layout = self._make_section("Pages")
+        self.pages_tabs = QTabWidget()
+        self.pages_tabs.setDocumentMode(True)
+        pages_root.addWidget(self.pages_tabs)
+
+        pages_arrange = QWidget()
+        self.pages_layout = QVBoxLayout(pages_arrange)
+        self.pages_layout.setContentsMargins(2, 2, 2, 2)
+        self.pages_layout.setSpacing(6)
+        self.pages_tabs.addTab(pages_arrange, "Arrange & edit")
+
+        pages_insert = QWidget()
+        self.insert_tab_layout = QVBoxLayout(pages_insert)
+        self.insert_tab_layout.setContentsMargins(2, 2, 2, 2)
+        self.insert_tab_layout.setSpacing(6)
+        self.pages_tabs.addTab(pages_insert, "Insert")
+
+        pages_numbers = QWidget()
+        self.numbers_tab_layout = QVBoxLayout(pages_numbers)
+        self.numbers_tab_layout.setContentsMargins(2, 2, 2, 2)
+        self.numbers_tab_layout.setSpacing(6)
+        self.pages_tabs.addTab(pages_numbers, "Page numbers")
+
+        pages_history = QWidget()
+        self.history_tab_layout = QVBoxLayout(pages_history)
+        self.history_tab_layout.setContentsMargins(2, 2, 2, 2)
+        self.history_tab_layout.setSpacing(6)
+        self.pages_tabs.addTab(pages_history, "History")
+
         self.optimise_section, self.optimise_layout = self._make_section("Optimise")
         self.convert_section, self.convert_layout = self._make_section("Convert")
         self.stamp_section, self.stamp_layout = self._make_section("Stamp")
         self.text_section, self.text_layout = self._make_section("Text")
-        for section in (
-            self.pages_section, self.optimise_section, self.convert_section,
-            self.stamp_section, self.text_section,
-        ):
-            self.content_layout.addWidget(section)
+
+        self.category_tabs.addTab(self.pages_section, "Pages")
+        self.category_tabs.addTab(self.optimise_section, "Optimise")
+        self.category_tabs.addTab(self.convert_section, "Convert")
+        self.category_tabs.addTab(self.stamp_section, "Stamp")
+        self.category_tabs.addTab(self.text_section, "Text")
 
         # --------------------------------------------------------------
         # Page scope
@@ -395,7 +424,7 @@ class Toolkit(QWidget):
         insert_layout.addRow("Selected file:", self.insert_path_label)
         insert_layout.addRow("Position:", self.insert_at)
         insert_layout.addRow(self.insert_button)
-        self.pages_layout.addWidget(insert_group)
+        self.insert_tab_layout.addWidget(insert_group)
 
         # --------------------------------------------------------------
         # Page numbers
@@ -425,7 +454,7 @@ class Toolkit(QWidget):
         numbers_layout.addRow("Start page:", self.number_start_page)
         numbers_layout.addRow("Numerals:", self.number_numerals)
         numbers_layout.addRow(self.number_button)
-        self.pages_layout.addWidget(numbers_group)
+        self.numbers_tab_layout.addWidget(numbers_group)
 
         # --------------------------------------------------------------
         # Watermark
@@ -510,10 +539,13 @@ class Toolkit(QWidget):
 
         undo_layout.addWidget(self.undo_button)
 
-        self.pages_layout.addWidget(undo_group)
+        self.history_tab_layout.addWidget(undo_group)
 
-        # Spacer
-        self.content_layout.addStretch(1)
+        for page_layout in (
+            self.pages_layout, self.insert_tab_layout,
+            self.numbers_tab_layout, self.history_tab_layout,
+        ):
+            page_layout.addStretch(1)
 
         # Helpful descriptions for fields whose labels alone are ambiguous.
         self.scope_combo.setToolTip("Choose whether page operations affect the whole PDF, the current page, or preview-selected pages.")
@@ -529,8 +561,6 @@ class Toolkit(QWidget):
         self.watermark_opacity.setToolTip("Choose how visible the watermark will be.")
         self.watermark_rotation.setToolTip("Choose the angle of the watermark.")
 
-        scroll.setWidget(content)
-        root.addWidget(scroll)
 
     # ------------------------------------------------------------------
     # Session connections
