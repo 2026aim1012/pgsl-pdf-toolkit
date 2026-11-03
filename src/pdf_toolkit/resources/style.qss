@@ -58,7 +58,8 @@ QPushButton:hover {
 }
 
 QPushButton:pressed {
-    background-color: #e2e8f0;
+    background-color: #cbd5e1;
+    border-color: #64748b;
 }
 
 QPushButton:disabled {
@@ -68,8 +69,7 @@ QPushButton:disabled {
 }
 
 QPushButton:focus {
-    border: 2px solid #2563eb;
-    outline: 2px solid #93c5fd;
+    outline: none;
 }
 
 /* Specific buttons */
@@ -86,9 +86,14 @@ QPushButton#openFolder:hover {
     color: #1d4ed8;
 }
 
+QPushButton#openFolder:pressed {
+    background-color: #dbeafe;
+    border-color: #2563eb;
+    color: #1d4ed8;
+}
+
 QPushButton#openFolder:focus {
-    border: 2px solid #2563eb;
-    outline: 2px solid #93c5fd;
+    outline: none;
 }
 
 QPushButton#navButton {
@@ -108,9 +113,14 @@ QPushButton#navButton:hover {
     color: #1d4ed8;
 }
 
+QPushButton#navButton:pressed {
+    background-color: #dbeafe;
+    border-color: #2563eb;
+    color: #1d4ed8;
+}
+
 QPushButton#navButton:focus {
-    border: 2px solid #2563eb;
-    outline: 2px solid #93c5fd;
+    outline: none;
 }
 
 QPushButton#navButton:disabled {
@@ -143,8 +153,7 @@ QPushButton#primaryButton:disabled, QPushButton#compressButton:disabled {
 }
 
 QPushButton#primaryButton:focus, QPushButton#compressButton:focus {
-    border: 2px solid #1e3a8a;
-    outline: 2px solid #93c5fd;
+    outline: none;
 }
 
 QPushButton#cancelButton {
@@ -166,11 +175,11 @@ QPushButton#cancelButton:hover {
 
 QPushButton#cancelButton:pressed {
     background-color: #fee2e2;
+    border-color: #dc2626;
 }
 
 QPushButton#cancelButton:focus {
-    border: 2px solid #b91c1c;
-    outline: 2px solid #fca5a5;
+    outline: none;
 }
 
 QPushButton#themeToggleBtn {
@@ -190,9 +199,13 @@ QPushButton#themeToggleBtn:hover {
     color: #0f172a;
 }
 
+QPushButton#themeToggleBtn:pressed {
+    background-color: #cbd5e1;
+    border-color: #64748b;
+}
+
 QPushButton#themeToggleBtn:focus {
-    border: 2px solid #2563eb;
-    outline: 2px solid #93c5fd;
+    outline: none;
 }
 
 /* ── Lists & Trees ────────────────────────────────────────────────── */
@@ -517,14 +530,19 @@ QMenuBar::item {
     color: #0f172a;
 }
 
+QMenuBar::item:hover,
 QMenuBar::item:selected {
     background-color: #eff6ff;
     color: #1d4ed8;
 }
 
+QMenuBar::item:pressed {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
 QMenuBar::item:focus {
-    border: 2px solid #2563eb;
-    outline: 2px solid #93c5fd;
+    outline: none;
 }
 
 QMenu {

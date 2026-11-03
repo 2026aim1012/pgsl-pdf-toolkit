@@ -126,8 +126,8 @@ def test_main_window_creation(qapp):
     assert window.act_about is not None
     assert window.act_shortcuts.shortcut().toString() == "F1"
 
-    # Window Icon
-    assert not window.windowIcon().isNull()
+    # Title bar icon removed per design
+    assert window.windowIcon().isNull()
 
     window.close()
     session.cleanup()
@@ -274,3 +274,63 @@ def test_dark_mode_toggle(qapp):
     session2.cleanup()
 
     settings.clear()
+
+
+def test_ui_interaction_and_focus_revert(qapp):
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    session = Session()
+    window = MainWindow(session=session)
+    window.show()
+
+    # 1. Window icon should be removed (empty)
+    assert window.windowIcon().isNull()
+
+    # 2. Clicking a button should NOT leave permanent focus
+    press = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(5, 5),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    release = QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        QPointF(5, 5),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    qapp.sendEvent(window.theme_btn, press)
+    qapp.sendEvent(window.theme_btn, release)
+    assert not window.theme_btn.hasFocus()
+
+    # 3. Moving fast off menubar clears activeAction
+    menu = window.menuBar()
+    hover_menu = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(15, 10),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    qapp.sendEvent(menu, hover_menu)
+    # Fast move to central widget area
+    move_away = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(200, 200),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    qapp.sendEvent(window.centralWidget(), move_away)
+    assert menu.activeAction() is None
+
+    # 4. Clicking empty area reverts UI states
+    window.revert_ui_state()
+    assert menu.activeAction() is None
+
+    window.close()
+    session.cleanup()
+
