@@ -31,9 +31,10 @@ by session.py.
 from __future__ import annotations
 
 from collections.abc import Callable
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
-from itertools import pairwise
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -181,7 +182,7 @@ class Toolkit(QWidget):
             self.watermark_text, self.watermark_opacity, self.watermark_rotation,
             self.watermark_button, self.ocr_button, self.export_text_button,
         ]
-        for first, second in pairwise(order, order[1:]):
+        for first, second in pairwise(order):
             QWidget.setTabOrder(first, second)
 
     def _build_ui(self) -> None:
