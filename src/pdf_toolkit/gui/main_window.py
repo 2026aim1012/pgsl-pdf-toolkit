@@ -17,21 +17,15 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QSettings, QSize, Qt
+from PySide6.QtCore import QPoint, QSettings, QSize, Qt
 from PySide6.QtGui import QAction, QFontDatabase, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QFileDialog,
-    QLineEdit,
     QMainWindow,
-    QMenu,
     QMessageBox,
-    QPlainTextEdit,
     QPushButton,
-    QSpinBox,
     QSplitter,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -223,7 +217,7 @@ class MainWindow(QMainWindow):
 
     def _create_menus(self) -> None:
         menubar = self.menuBar()
-        menubar.setNativeMenuBar(True)
+        menubar.setNativeMenuBar(False)
 
         # ── File Menu ──
         file_menu = menubar.addMenu("&File")
@@ -353,7 +347,6 @@ class MainWindow(QMainWindow):
         help_menu.addAction(self.act_about)
 
         # ── Corner Widget: Dark/Light Mode Switch Button ──
-        menubar.setNativeMenuBar(False)
         self.theme_btn = QPushButton("Dark Mode", self)
         self.theme_btn.setObjectName("themeToggleBtn")
         self.theme_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
@@ -520,86 +513,12 @@ class MainWindow(QMainWindow):
     # ── Lifecycle ────────────────────────────────────────────────────
 
     def _setup_ui_interactions(self) -> None:
-        """Configure button focus policies and install interaction event filters."""
+        """Configure button focus policies for clean mouse and keyboard behavior."""
         for btn in self.findChildren(QPushButton):
             btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
 
-        menubar = self.menuBar()
-        if menubar:
-            menubar.installEventFilter(self)
-
-        app = QApplication.instance()
-        if app:
-            app.installEventFilter(self)
-
-    def revert_ui_state(self) -> None:
-        """Revert all buttons, dropdowns, and menubar items to their natural UI state."""
-        app = QApplication.instance()
-        if app:
-            focused = app.focusWidget()
-            if focused is not None and not isinstance(
-                focused, (QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox)
-            ):
-                focused.clearFocus()
-
-        for btn in self.findChildren(QPushButton):
-            btn.clearFocus()
-
-        for combo in self.findChildren(QComboBox):
-            combo.hidePopup()
-            combo.clearFocus()
-
-        menubar = self.menuBar()
-        if menubar and not any(m.isVisible() for m in menubar.findChildren(QMenu)):
-            menubar.leaveEvent(QEvent(QEvent.Type.Leave))
-            menubar.clearFocus()
-            menubar.update()
-
-        self.update()
-
-    def mousePressEvent(self, event: Any) -> None:
-        """Clicking somewhere empty in the window reverts all active UI states."""
-        self.revert_ui_state()
-        super().mousePressEvent(event)
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        """Application event filter to prevent sticky highlights and persistent focus."""
-        etype = event.type()
-        if etype == QEvent.Type.MouseButtonRelease:
-            if isinstance(watched, QPushButton):
-                watched.clearFocus()
-        elif etype == QEvent.Type.MouseButtonPress:
-            if not isinstance(
-                watched,
-                (QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QComboBox, QPushButton),
-            ):
-                self.revert_ui_state()
-        elif watched is self.menuBar() and etype == QEvent.Type.Leave:
-            if not any(m.isVisible() for m in self.menuBar().findChildren(QMenu)):
-                self.menuBar().leaveEvent(event)
-                self.menuBar().clearFocus()
-                self.menuBar().update()
-        elif etype == QEvent.Type.MouseMove and watched is not self.menuBar():
-            menubar = self.menuBar()
-            if (
-                menubar
-                and not menubar.underMouse()
-                and not any(m.isVisible() for m in menubar.findChildren(QMenu))
-                and menubar.activeAction() is not None
-            ):
-                menubar.leaveEvent(QEvent(QEvent.Type.Leave))
-                menubar.clearFocus()
-                menubar.update()
-        return super().eventFilter(watched, event)
-
     def closeEvent(self, event: Any) -> None:
         """Prompt to save if modified, then cleanup temporary session state."""
-        app = QApplication.instance()
-        if app:
-            app.removeEventFilter(self)
-        if self.menuBar():
-            self.menuBar().removeEventFilter(self)
-
         if self.session.modified:
             reply = QMessageBox.question(
                 self,
