@@ -1,8 +1,10 @@
+import sys
+from bisect import bisect_left
 from pathlib import Path
 
 import pypdfium2 as pdfium
-from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QImage, QPixmap
+from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QDrag, QIcon, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
@@ -18,8 +20,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pdf_toolkit.core.page_ops import move_pages_order, reorder_pages
+
 THUMB_SIZE = QSize(60, 80)  # box each thumbnail picture fits into
 DRAWN = Qt.ItemDataRole.UserRole  # marks thumbnails already rendered
+PAGES_MIME = "application/x-pgsl-pages"  # tags our own thumbnail drags
+
+# Keyboard shortcut for moving pages, written the way each system shows it.
+# (Qt's "Ctrl" is the Command key on a Mac.)
+if sys.platform == "darwin":
+    MOVE_KEYS = "⌘⇧← / ⌘⇧→"
+    MOVE_KEYS_SPOKEN = "Command Shift Left or Right arrow"
+else:
+    MOVE_KEYS = "Ctrl+Shift+← / →"
+    MOVE_KEYS_SPOKEN = "Control Shift Left or Right arrow"
 
 
 def render_page(pdf, index: int, box_w: int, box_h: int, dpr: float = 1.0) -> QPixmap:
@@ -46,12 +60,208 @@ def render_page(pdf, index: int, box_w: int, box_h: int, dpr: float = 1.0) -> QP
     return pixmap
 
 
+def drop_index(centers: list[float], x: float) -> int:
+    """Where a drop lands in the strip: the number of thumbnails whose
+    centre is left of the mouse. 0 = before the first page,
+    len(centers) = after the last page.
+
+        drop_index([10, 30, 50], 5)   -> 0
+        drop_index([10, 30, 50], 35)  -> 2
+        drop_index([10, 30, 50], 99)  -> 3
+    """
+    return bisect_left(centers, x)
+
+
+def keyboard_move_target(page_count: int, pages: list[int], step: int) -> int | None:
+    """Where the keyboard shortcut moves `pages`: one place left (step -1) or
+    right (step +1). Returns the drop position, in the same form as a drag
+    (the page they go in front of), or None when they can't move further.
+
+        keyboard_move_target(5, [2], -1)  -> 1     (page 3 goes before page 2)
+        keyboard_move_target(5, [2], +1)  -> 4     (page 3 goes after page 4)
+        keyboard_move_target(5, [0], -1)  -> None  (already first)
+
+    Pages that are not next to each other are gathered together, the same
+    as when they are dragged.
+    """
+    if not pages or page_count < 2:
+        return None
+    first, last = min(pages), max(pages)
+    if step < 0:
+        return first - 1 if first > 0 else None
+    return min(last + 2, page_count) if last < page_count - 1 else None
+
+
+# ----------------------------------------------------------------------
+#  Thumbnail strip with drag-to-reorder
+# ----------------------------------------------------------------------
+
+
+class ThumbStrip(QListWidget):
+    """A one-row list of page thumbnails. Dragging thumbnails to a new place
+    does NOT move them itself: it emits `pagesDropped(pages, position)` and
+    the panel asks the Session to really reorder the PDF (so Undo works).
+    After that the strip is simply rebuilt from the new file."""
+
+    pagesDropped = Signal(list, int)  # pages dragged (0-based), drop position
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("thumbs")
+        self.setViewMode(QListWidget.ViewMode.IconMode)
+        self.setFlow(QListWidget.Flow.LeftToRight)
+        self.setWrapping(False)  # a single row
+        self.setMovement(QListWidget.Movement.Static)  # Qt must not move items
+        self.setIconSize(THUMB_SIZE)
+        self.setSpacing(6)
+        self.setUniformItemSizes(True)
+        self.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )  # Ctrl / Shift
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setFixedHeight(THUMB_SIZE.height() + 50)
+
+        # Turn dragging on AFTER setMovement(Static): setMovement switches
+        # drag and drop off again.
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
+        self.setDropIndicatorShown(False)  # we draw our own line instead
+
+        self._drop_at = None  # where the blue line is drawn while dragging
+
+        # Screen readers (VoiceOver, Narrator) read these out.
+        self.setAccessibleName("Page thumbnails")
+        self.setAccessibleDescription(
+            "Arrow keys go to the previous or next page. Shift with an arrow "
+            f"selects several pages. {MOVE_KEYS_SPOKEN} moves the selected pages."
+        )
+
+    # ----- moving pages with the keyboard -----
+
+    def keyPressEvent(self, event):
+        """Ctrl+Shift+Left/Right (Cmd+Shift on a Mac) moves the selected pages
+        one place, the keyboard version of dragging them. Everything else
+        (arrows, Home, End, Shift+arrows) is handled by Qt as usual."""
+        mods = event.modifiers()
+        ctrl_shift = (
+            bool(mods & Qt.KeyboardModifier.ControlModifier)
+            and bool(mods & Qt.KeyboardModifier.ShiftModifier)
+            and not mods & Qt.KeyboardModifier.AltModifier
+        )
+        if ctrl_shift and event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            event.accept()
+            if not self.dragEnabled():
+                return  # a job is running, same rule as dragging
+            pages = sorted(self.row(item) for item in self.selectedItems())
+            if not pages and self.currentRow() >= 0:
+                pages = [self.currentRow()]
+            step = -1 if event.key() == Qt.Key.Key_Left else 1
+            target = keyboard_move_target(self.count(), pages, step)
+            if target is not None:
+                self.pagesDropped.emit(pages, target)
+            return
+        super().keyPressEvent(event)
+
+    # ----- starting a drag -----
+
+    def startDrag(self, supported_actions):
+        """Called by Qt when the mouse moves with a thumbnail held down."""
+        items = self.selectedItems()
+        if not items:
+            return
+        mime = QMimeData()
+        mime.setData(PAGES_MIME, b"pages")  # only the content type matters
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        icon = self.currentItem().icon() if self.currentItem() else items[0].icon()
+        drag.setPixmap(icon.pixmap(THUMB_SIZE))
+        drag.setHotSpot(drag.pixmap().rect().center())
+        # We started the drag ourselves, so Qt never deletes items when it
+        # ends, whatever the drop does.
+        drag.exec(Qt.DropAction.MoveAction)
+        self._set_drop_at(None)
+
+    # ----- while dragging over the strip -----
+
+    def _is_our_drag(self, event) -> bool:
+        return event.source() is self and event.mimeData().hasFormat(PAGES_MIME)
+
+    def _position_for(self, x: int) -> int:
+        centers = [
+            self.visualItemRect(self.item(row)).center().x()
+            for row in range(self.count())
+        ]
+        return drop_index(centers, x)
+
+    def _set_drop_at(self, position):
+        if position != self._drop_at:
+            self._drop_at = position
+            self.viewport().update()  # redraw the blue line
+
+    def dragEnterEvent(self, event):
+        if self._is_our_drag(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if not self._is_our_drag(event):
+            event.ignore()
+            return
+        x = event.position().toPoint().x()
+        # Scroll the strip when the mouse is near its left or right edge
+        bar = self.horizontalScrollBar()
+        if x < 40:
+            bar.setValue(bar.value() - 20)
+        elif x > self.viewport().width() - 40:
+            bar.setValue(bar.value() + 20)
+        self._set_drop_at(self._position_for(x))
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event):
+        self._set_drop_at(None)
+        event.accept()
+
+    def dropEvent(self, event):
+        if not self._is_our_drag(event):
+            event.ignore()
+            return
+        position = self._position_for(event.position().toPoint().x())
+        pages = sorted(self.row(item) for item in self.selectedItems())
+        self._set_drop_at(None)
+        event.acceptProposedAction()
+        if pages:
+            self.pagesDropped.emit(pages, position)
+
+    # ----- the blue "drop here" line -----
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._drop_at is None or self.count() == 0:
+            return
+        if self._drop_at < self.count():
+            rect = self.visualItemRect(self.item(self._drop_at))
+            x = rect.left() - 4  # just left of that thumbnail
+        else:
+            rect = self.visualItemRect(self.item(self.count() - 1))
+            x = rect.right() + 4  # just right of the last one
+        painter = QPainter(self.viewport())
+        painter.setPen(QPen(QColor("#2f6fdc"), 3))
+        painter.drawLine(x, rect.top(), x, rect.bottom())
+        painter.end()
+
+
 class PreviewPanel(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
         self.session = session
         self.pdf = None  # the open pdfium.PdfDocument (None = nothing open)
         self.index = 0  # page currently shown (0-based)
+        # After a drag-reorder: (page count, page to show, pages to select)
+        # once the reordered file arrives. None = nothing waiting.
+        self._after_move = None
 
         self._build_ui()
         self._connect_signals()
@@ -62,6 +272,7 @@ class PreviewPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _build_ui(self):
+        self.setAccessibleName("Preview")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 12)
         layout.setSpacing(10)
@@ -74,6 +285,7 @@ class PreviewPanel(QWidget):
         # 1) The big page
         self.page_label = QLabel()
         self.page_label.setObjectName("pageView")
+        self.page_label.setAccessibleName("Page view")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # "Ignored" = the layout decides the size. Without it, a big page
         # picture would stop the window from being made smaller.
@@ -88,12 +300,20 @@ class PreviewPanel(QWidget):
         for button in (self.prev_btn, self.next_btn):
             button.setObjectName("navButton")
             button.setFixedWidth(36)
+            # Reachable with Tab on every system (macOS skips buttons otherwise)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.prev_btn.setAccessibleName("Previous page")
+        self.prev_btn.setToolTip("Previous page (Left arrow or Page Up)")
+        self.next_btn.setAccessibleName("Next page")
+        self.next_btn.setToolTip("Next page (Right arrow or Page Down)")
 
         self.page_box = QSpinBox()
         self.page_box.setFixedWidth(60)
         self.page_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.page_box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.page_box.setKeyboardTracking(False)  # jump on Enter, not every key
+        self.page_box.setAccessibleName("Page number")
+        self.page_box.setToolTip("Type a page number and press Enter")
 
         self.total_label = QLabel("/ 0")
 
@@ -106,21 +326,8 @@ class PreviewPanel(QWidget):
         nav.addStretch(1)
         layout.addLayout(nav)
 
-        # 3) Thumbnail strip (a list shown as one horizontal row of icons)
-        self.thumbs = QListWidget()
-        self.thumbs.setObjectName("thumbs")
-        self.thumbs.setViewMode(QListWidget.ViewMode.IconMode)
-        self.thumbs.setFlow(QListWidget.Flow.LeftToRight)
-        self.thumbs.setWrapping(False)  # a single row
-        self.thumbs.setMovement(QListWidget.Movement.Static)  # items can't be dragged
-        self.thumbs.setIconSize(THUMB_SIZE)
-        self.thumbs.setSpacing(6)
-        self.thumbs.setUniformItemSizes(True)
-        self.thumbs.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection
-        )  # Ctrl / Shift / drag
-        self.thumbs.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.thumbs.setFixedHeight(THUMB_SIZE.height() + 50)
+        # 3) Thumbnail strip: one row of page pictures; drag them to reorder
+        self.thumbs = ThumbStrip()
 
         strip = QFrame()  # dashed box around the strip (style.qss)
         strip.setObjectName("thumbStrip")
@@ -130,11 +337,18 @@ class PreviewPanel(QWidget):
         layout.addWidget(strip)
 
         hint = QLabel(
-            "Click a thumbnail to jump · Ctrl + click or drag to select multiple pages"
+            "Click a thumbnail to jump · Ctrl + click to select several · "
+            f"Drag or {MOVE_KEYS} to move pages"
         )
         hint.setObjectName("hint")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setWordWrap(True)
         layout.addWidget(hint)
+
+        # Tab goes left to right along the controls, then into the thumbnails
+        QWidget.setTabOrder(self.prev_btn, self.page_box)
+        QWidget.setTabOrder(self.page_box, self.next_btn)
+        QWidget.setTabOrder(self.next_btn, self.thumbs)
 
         # Timers that wait a moment before redrawing, so resizing or scrolling
         # quickly doesn't redraw 100 times a second.
@@ -167,6 +381,11 @@ class PreviewPanel(QWidget):
         self.page_box.valueChanged.connect(lambda number: s.set_page(number - 1))
         self.thumbs.currentRowChanged.connect(self._on_thumb_clicked)
         self.thumbs.itemSelectionChanged.connect(self._on_thumb_selection)
+        self.thumbs.pagesDropped.connect(self._on_pages_dropped)
+
+        # No dragging while another job runs (the Session refuses it anyway)
+        if hasattr(s, "busyChanged"):
+            s.busyChanged.connect(self._on_busy_changed)
 
         # Thumbnails are only drawn when visible, so check again after scrolling.
         # (lambda *_ throws away the scroll value: timer.start(value) would
@@ -191,7 +410,7 @@ class PreviewPanel(QWidget):
                 # The Session deletes old temp files, and Windows can't delete
                 # a file that is still open.
                 self.pdf = pdfium.PdfDocument(Path(path).read_bytes())
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001 - any unreadable file shows a message
                 self._show_empty(f"Could not display this file:\n{e}")
                 return
 
@@ -205,12 +424,20 @@ class PreviewPanel(QWidget):
             self.page_box.setEnabled(True)
             self.show_page(self.session.page)
 
+        # Just reordered by a drag? Then follow the moved pages. Done a moment
+        # later (singleShot 0), after the Session has finished announcing the
+        # new file, so its own "page / selection reset" doesn't undo this.
+        waiting, self._after_move = self._after_move, None
+        if waiting is not None and waiting[0] == count:
+            QTimer.singleShot(0, lambda: self._follow_moved_pages(waiting))
+
     def _set_page_count(self, count: int):
         """Update '/ 391' and the highest number the page box accepts."""
         self.page_box.blockSignals(True)  # don't trigger set_page here
         self.page_box.setRange(1, max(1, count))
         self.page_box.blockSignals(False)
         self.total_label.setText(f"/ {count}")
+        self.total_label.setAccessibleName(f"of {count} pages")
 
     def show_page(self, index: int):
         """Show page `index` (0-based) and keep the controls in sync."""
@@ -226,6 +453,8 @@ class PreviewPanel(QWidget):
 
         self.prev_btn.setEnabled(self.index > 0)
         self.next_btn.setEnabled(self.index < count - 1)
+        # What a screen reader says for the big page, e.g. "Page 3 of 8"
+        self.page_label.setAccessibleDescription(f"Page {self.index + 1} of {count}")
 
         # Highlight the matching thumbnail. Skipped when it is already the
         # current one, so a Ctrl+click multi-selection is not wiped out.
@@ -261,6 +490,45 @@ class PreviewPanel(QWidget):
     def _selected_rows(self) -> list:
         return sorted(self.thumbs.row(item) for item in self.thumbs.selectedItems())
 
+    # ----- drag to reorder -----
+
+    def _on_pages_dropped(self, pages: list, position: int):
+        """Thumbnails `pages` were dropped in front of `position`."""
+        if self.pdf is None or self.session.busy:
+            return
+        count = len(self.pdf)
+        order = move_pages_order(count, pages, position)
+        if order == list(range(count)):
+            return  # dropped where they already were
+
+        # Where the moved pages end up, so we can show them afterwards
+        new_places = sorted(order.index(p) for p in pages)
+        self._after_move = (count, new_places[0], new_places)
+
+        moved = "1 page" if len(pages) == 1 else f"{len(pages)} pages"
+        started = self.session.apply(
+            reorder_pages, order=order, description=f"Moving {moved}..."
+        )
+        if not started:
+            self._after_move = None
+
+    def _follow_moved_pages(self, waiting):
+        """Show and select the pages the user just moved."""
+        _count, first, selected = waiting
+        self.session.set_page(first)
+        self.session.set_selected_pages(selected)
+
+    def _on_busy_changed(self, busy: bool):
+        self.thumbs.setDragEnabled(not busy)
+        if not busy:
+            # The job is over. If it failed or was cancelled, no new file
+            # arrives, so forget the pages we were waiting to show. (When it
+            # succeeded, load_document already used them before this runs.)
+            QTimer.singleShot(0, self._forget_pending_move)
+
+    def _forget_pending_move(self):
+        self._after_move = None
+
     # ------------------------------------------------------------------
     #  Drawing
     # ------------------------------------------------------------------
@@ -268,6 +536,7 @@ class PreviewPanel(QWidget):
     def _show_empty(self, text="No document open\nPick a PDF in the Explorer"):
         self.page_label.clear()
         self.page_label.setText(text)
+        self.page_label.setAccessibleDescription(text.replace("\n", ". "))
         self.total_label.setText("/ 0")
         self.thumbs.clear()
         for widget in (self.prev_btn, self.next_btn, self.page_box):
@@ -293,7 +562,11 @@ class PreviewPanel(QWidget):
         blank = QPixmap(THUMB_SIZE)
         blank.fill(QColor("white"))
         for i in range(count):
-            self.thumbs.addItem(QListWidgetItem(QIcon(blank), str(i + 1)))
+            item = QListWidgetItem(QIcon(blank), str(i + 1))
+            # Read out as "Page 3" instead of just "3"
+            item.setData(Qt.ItemDataRole.AccessibleTextRole, f"Page {i + 1}")
+            item.setToolTip(f"Page {i + 1}")
+            self.thumbs.addItem(item)
         self.thumbs.blockSignals(False)
         self._thumb_timer.start()
 
@@ -337,7 +610,7 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     session = Session()
-    session.error.connect(print)
+    session.errorMessage.connect(print)
     app.aboutToQuit.connect(session.cleanup)
 
     panel = PreviewPanel(session)

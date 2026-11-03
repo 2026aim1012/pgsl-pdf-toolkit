@@ -83,9 +83,7 @@ def test_page_numbers_devanagari(tmp_path):
     out = tmp_path / "out_dev.pdf"
     rec = ProgressRecorder()
 
-    page_numbers(
-        src, out, rec, position="bottom_right", start=1, numerals="devanagari"
-    )
+    page_numbers(src, out, rec, position="bottom_right", start=1, numerals="devanagari")
 
     assert out.is_file()
     assert len(rec.calls) >= 3
@@ -207,6 +205,63 @@ def test_page_numbers_in_place(tmp_path):
     doc.close()
 
 
+def test_page_numbers_custom_start_and_start_page(tmp_path):
+    src = create_blank_pdf(tmp_path / "in.pdf", 4)
+    out = tmp_path / "out_start_page.pdf"
+
+    page_numbers(src, out, None, start=5, start_page=2)
+
+    doc = pdfium.PdfDocument(str(out))
+    assert len(doc) == 4
+
+    tp0 = doc[0].get_textpage()
+    assert tp0.get_text_range().strip() == ""
+    tp0.close()
+    doc[0].close()
+
+    tp1 = doc[1].get_textpage()
+    assert tp1.get_text_range().strip() == "5"
+    tp1.close()
+    doc[1].close()
+
+    tp2 = doc[2].get_textpage()
+    assert tp2.get_text_range().strip() == "6"
+    tp2.close()
+    doc[2].close()
+
+    tp3 = doc[3].get_textpage()
+    assert tp3.get_text_range().strip() == "7"
+    tp3.close()
+    doc[3].close()
+    doc.close()
+
+
+def test_page_numbers_start_page_devanagari(tmp_path):
+    src = create_blank_pdf(tmp_path / "in.pdf", 3)
+    out = tmp_path / "out_dev_start_page.pdf"
+
+    page_numbers(src, out, None, numerals="devanagari", start=1, start_page=2)
+
+    doc = pdfium.PdfDocument(str(out))
+    assert len(doc) == 3
+
+    tp0 = doc[0].get_textpage()
+    assert tp0.get_text_range().strip() == ""
+    tp0.close()
+    doc[0].close()
+
+    tp1 = doc[1].get_textpage()
+    assert tp1.get_text_range().strip() == "१"
+    tp1.close()
+    doc[1].close()
+
+    tp2 = doc[2].get_textpage()
+    assert tp2.get_text_range().strip() == "२"
+    tp2.close()
+    doc[2].close()
+    doc.close()
+
+
 def test_page_numbers_errors(tmp_path):
     src = create_blank_pdf(tmp_path / "in.pdf", 2)
     out = tmp_path / "out.pdf"
@@ -222,6 +277,15 @@ def test_page_numbers_errors(tmp_path):
 
     with pytest.raises(ValueError, match="non-negative"):
         page_numbers(src, out, start=-1)
+
+    with pytest.raises(ValueError, match="start_page must be at least 1"):
+        page_numbers(src, out, start_page=0)
+
+    with pytest.raises(ValueError, match="start_page must be at least 1"):
+        page_numbers(src, out, start_page=-1)
+
+    with pytest.raises(ValueError, match="No valid pages"):
+        page_numbers(src, out, start_page=5)
 
     with pytest.raises(ValueError, match="No valid pages"):
         page_numbers(src, out, pages=[])

@@ -220,3 +220,5 @@ __marimo__/
 # 
 *.pptx
 *.ppt
+# Keep our PyInstaller recipe: the "*.spec" rule above would ignore it
+!pdf-toolkit.spec

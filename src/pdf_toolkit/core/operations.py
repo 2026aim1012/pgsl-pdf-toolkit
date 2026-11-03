@@ -11,7 +11,6 @@ Follows the team backend contract:
 from __future__ import annotations
 
 import io
-import shutil
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -19,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import pikepdf
 from PIL import Image, ImageDraw, ImageFont
 
+from pdf_toolkit.core.compressor import compress as _compress
 from pdf_toolkit.core.converter import (
     images_to_pdf as _converter_images_to_pdf,
 )
@@ -301,58 +301,13 @@ def compress_pdf(
     **kwargs: Any,
 ) -> None:
     """
-    Compress PDF streams and optimize objects.
-    Ensures output is never larger than the input.
+    Compress a PDF (FR-03). The work is done by core/compressor.py.
+
+    Photos are re-saved as JPEG at `quality` (1-100; 100 = keep them as
+    they are), then the PDF structure is optimised. The output is never
+    larger than the input.
     """
-    src = Path(src_path).resolve()
-    out = Path(out_path).resolve()
-
-    if not src.is_file():
-        raise FileNotFoundError(f"Source file not found: {src}")
-    if not 1 <= int(quality) <= 100:
-        raise ValueError("quality must be between 1 and 100.")
-    if src == out:
-        raise ValueError("Source and destination must be different files.")
-
-    out.parent.mkdir(parents=True, exist_ok=True)
-    temp = out.with_name(f".{out.stem}.comp_tmp{out.suffix}")
-    if temp.exists():
-        temp.unlink()
-
-    src_size = src.stat().st_size
-    _report(reporter, 10, 100, "Optimizing PDF streams...")
-    _check_cancelled(reporter)
-
-    try:
-        with pikepdf.open(src) as pdf:
-            _check_cancelled(reporter)
-            pdf.save(
-                temp,
-                compress_streams=True,
-                recompress_flate=True,
-                object_stream_mode=pikepdf.ObjectStreamMode.generate,
-            )
-
-        _check_cancelled(reporter)
-        if not temp.is_file():
-            raise RuntimeError("Compression failed to produce output file.")
-
-        compressed_size = temp.stat().st_size
-        if compressed_size < src_size:
-            temp.replace(out)
-            _report(
-                reporter,
-                100,
-                100,
-                f"Compressed: {src_size} -> {compressed_size} bytes",
-            )
-        else:
-            temp.unlink(missing_ok=True)
-            shutil.copy2(src, out)
-            _report(reporter, 100, 100, "Original size retained (already optimal)")
-    except Exception:
-        temp.unlink(missing_ok=True)
-        raise
+    _compress(src_path, out_path, reporter, quality=quality, **kwargs)
 
 
 def images_to_pdf(
@@ -551,7 +506,7 @@ def register_default_operations(registry: OperationsRegistry) -> None:
         compress_pdf,
         kind="modifying",
         display_name="Compress PDF",
-        description="Losslessly compress PDF streams and remove redundant objects.",
+        description="Shrink the PDF: re-save photos at the chosen quality and optimise its structure.",
     )
     registry.register(
         "export_text",
