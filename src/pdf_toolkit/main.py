@@ -9,7 +9,7 @@ and displays the integrated MainWindow.
 import sys
 from pathlib import Path
 
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
 # Ensure gui directory is in sys.path
@@ -37,6 +37,14 @@ def main() -> None:
     app.setApplicationName("PGSL PDF Toolkit")
     app.setApplicationDisplayName("PGSL PDF Toolkit — IIT Ropar")
     app.setOrganizationName("IIT Ropar")
+
+    # Set application icon
+    icons_dir = Path(__file__).resolve().parent / "resources" / "icons"
+    for icon_name in ("app_icon.png", "icon.png", "app_icon.ico", "icon.ico"):
+        icon_path = icons_dir / icon_name
+        if icon_path.is_file():
+            app.setWindowIcon(QIcon(str(icon_path)))
+            break
 
     # Load embedded application fonts
     ensure_application_fonts()

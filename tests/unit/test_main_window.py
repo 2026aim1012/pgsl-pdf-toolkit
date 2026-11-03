@@ -117,6 +117,12 @@ def test_main_window_creation(qapp):
     assert window.act_save_as is not None
     assert window.act_undo is not None
     assert not window.act_undo.isEnabled()
+    assert window.act_shortcuts is not None
+    assert window.act_about is not None
+    assert window.act_shortcuts.shortcut().toString() == "F1"
+
+    # Window Icon
+    assert not window.windowIcon().isNull()
 
     window.close()
     session.cleanup()
@@ -147,3 +153,43 @@ def test_main_window_document_lifecycle(qapp, tmp_path):
 
     window.close()
     session.cleanup()
+
+
+def test_help_menu_dialogs(qapp, monkeypatch):
+    session = Session()
+    window = MainWindow(session=session)
+
+    shortcuts_shown = []
+    about_shown = []
+
+    monkeypatch.setattr(
+        "pdf_toolkit.gui.main_window.QMessageBox.information",
+        lambda parent, title, text: shortcuts_shown.append((title, text)),
+    )
+    monkeypatch.setattr(
+        "pdf_toolkit.gui.main_window.QMessageBox.about",
+        lambda parent, title, text: about_shown.append((title, text)),
+    )
+
+    window.act_shortcuts.trigger()
+    assert len(shortcuts_shown) == 1
+    assert "Keyboard Shortcuts" in shortcuts_shown[0][0]
+    assert "Ctrl + O" in shortcuts_shown[0][1]
+
+    window.act_about.trigger()
+    assert len(about_shown) == 1
+    assert "About" in about_shown[0][0]
+    assert "0.2.0" in about_shown[0][1]
+
+    window.close()
+    session.cleanup()
+
+
+def test_ensure_application_fonts(qapp):
+    from PySide6.QtGui import QFontDatabase
+
+    from pdf_toolkit.gui.main_window import ensure_application_fonts
+
+    ensure_application_fonts()
+    families = QFontDatabase.families()
+    assert any("Devanagari" in f for f in families)

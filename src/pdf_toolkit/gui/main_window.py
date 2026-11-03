@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QFontDatabase, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QFontDatabase, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -33,6 +33,7 @@ _gui_dir = str(Path(__file__).resolve().parent)
 if _gui_dir not in sys.path:
     sys.path.insert(0, _gui_dir)
 
+from pdf_toolkit import __version__
 from pdf_toolkit.gui.explorer import ExplorerPanel
 from pdf_toolkit.gui.preview import PreviewPanel
 from pdf_toolkit.gui.session import Session
@@ -121,6 +122,14 @@ class MainWindow(QMainWindow):
         # Default 1280x720, minimum 960x540 (fits >= 720p screens)
         self.resize(1280, 720)
         self.setMinimumSize(960, 540)
+
+        # Set application / window icon
+        icons_dir = Path(__file__).resolve().parent.parent / "resources" / "icons"
+        for icon_name in ("app_icon.png", "icon.png", "app_icon.ico", "icon.ico"):
+            icon_path = icons_dir / icon_name
+            if icon_path.is_file():
+                self.setWindowIcon(QIcon(str(icon_path)))
+                break
 
         # Global Esc shortcut to cancel background worker
         esc_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
@@ -268,14 +277,18 @@ class MainWindow(QMainWindow):
         # ── Help Menu ──
         help_menu = menubar.addMenu("&Help")
 
-        act_shortcuts = QAction("&Keyboard Shortcuts", self)
-        act_shortcuts.setShortcut(QKeySequence("F1"))
-        act_shortcuts.triggered.connect(self._show_shortcuts_dialog)
-        help_menu.addAction(act_shortcuts)
+        self.act_shortcuts = QAction("&Keyboard Shortcuts", self)
+        self.act_shortcuts.setShortcut(QKeySequence("F1"))
+        self.act_shortcuts.setStatusTip("View accessible keyboard shortcuts guide")
+        self.act_shortcuts.setToolTip("View keyboard shortcuts (F1)")
+        self.act_shortcuts.triggered.connect(self._show_shortcuts_dialog)
+        help_menu.addAction(self.act_shortcuts)
 
-        act_about = QAction("&About PGSL PDF Toolkit", self)
-        act_about.triggered.connect(self._show_about_dialog)
-        help_menu.addAction(act_about)
+        self.act_about = QAction("&About PGSL PDF Toolkit", self)
+        self.act_about.setStatusTip("View application version and credits")
+        self.act_about.setToolTip("About PGSL PDF Toolkit")
+        self.act_about.triggered.connect(self._show_about_dialog)
+        help_menu.addAction(self.act_about)
 
     # ── Session Connections ──────────────────────────────────────────
 
@@ -388,18 +401,26 @@ class MainWindow(QMainWindow):
 
     def _show_shortcuts_dialog(self) -> None:
         msg = (
-            "<b>Keyboard Shortcuts:</b><br><br>"
-            "<table>"
+            "<h3>Keyboard Shortcuts</h3>"
+            "<table cellpadding='4' cellspacing='2'>"
+            "<tr><th align='left'>Shortcut</th><th align='left'>Action</th></tr>"
             "<tr><td><b>Ctrl + O</b></td><td>Open PDF document</td></tr>"
             "<tr><td><b>Ctrl + Shift + O</b></td><td>Open folder in explorer</td></tr>"
             "<tr><td><b>Ctrl + S</b></td><td>Save document</td></tr>"
             "<tr><td><b>Ctrl + Shift + S</b></td><td>Save document as...</td></tr>"
             "<tr><td><b>Ctrl + W</b></td><td>Close current document</td></tr>"
+            "<tr><td><b>Ctrl + Q</b></td><td>Exit application</td></tr>"
             "<tr><td><b>Ctrl + Z</b></td><td>Undo last operation</td></tr>"
             "<tr><td><b>Left / Right</b></td><td>Previous / Next page</td></tr>"
-            "<tr><td><b>F8 / F9</b></td><td>Toggle Explorer / Toolkit panel</td></tr>"
+            "<tr><td><b>Page Up / Down</b></td><td>Previous / Next page</td></tr>"
+            "<tr><td><b>Tab / Shift + Tab</b></td><td>Move focus between controls</td></tr>"
+            "<tr><td><b>Space</b></td><td>Toggle selection / Activate focused button</td></tr>"
+            "<tr><td><b>Enter</b></td><td>Open selected file in Explorer</td></tr>"
+            "<tr><td><b>F8</b></td><td>Toggle Explorer panel</td></tr>"
+            "<tr><td><b>F9</b></td><td>Toggle Toolkit panel</td></tr>"
             "<tr><td><b>Ctrl + 0</b></td><td>Reset panel layout</td></tr>"
             "<tr><td><b>Escape</b></td><td>Cancel running operation</td></tr>"
+            "<tr><td><b>F1</b></td><td>Show this keyboard shortcuts guide</td></tr>"
             "</table>"
         )
         QMessageBox.information(self, "Keyboard Shortcuts", msg)
@@ -407,7 +428,7 @@ class MainWindow(QMainWindow):
     def _show_about_dialog(self) -> None:
         msg = (
             "<h3>PGSL PDF Toolkit</h3>"
-            "<p><b>Version 0.1.0 (Milestone 2)</b></p>"
+            f"<p><b>Version {__version__}</b></p>"
             "<p>Developed for IIT Ropar Store & Purchase and Student Affairs sections.</p>"
             "<p>A safe, fully offline desktop application for PDF manipulation:</p>"
             "<ul>"
