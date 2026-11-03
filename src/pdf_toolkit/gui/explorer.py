@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -121,6 +121,21 @@ class MergeOrderDialog(QDialog):
         return list(self._files)
 
 
+class ExplorerList(QListWidget):
+    """QListWidget that also reports Enter/Return as 'open this item'."""
+
+    enterPressed = Signal(object)  # the QListWidgetItem
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            item = self.currentItem()
+            if item is not None:
+                self.enterPressed.emit(item)
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+
 # The panel
 
 
@@ -158,7 +173,7 @@ class ExplorerPanel(QFrame):
         self.path_label.setObjectName("pathLabel")
         layout.addWidget(self.path_label)
 
-        self.list = QListWidget()
+        self.list = ExplorerList()
         self.list.setObjectName("explorer")
         self.list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -183,10 +198,11 @@ class ExplorerPanel(QFrame):
 
     def _connect_widgets(self) -> None:
         self.open_btn.clicked.connect(self._on_open_folder)
+        self.list.customContextMenuRequested.connect(self._on_context_menu)
         self.list.itemClicked.connect(self._on_item_clicked)
         self.list.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.list.itemChanged.connect(self._on_item_changed)
-        self.list.customContextMenuRequested.connect(self._on_context_menu)
+        self.list.enterPressed.connect(self._open_item)
         self.order_btn.clicked.connect(self._on_choose_order)
         self.img_pdf_btn.clicked.connect(self._on_images_to_pdf)
 
@@ -268,12 +284,19 @@ class ExplorerPanel(QFrame):
         pass
 
     def _on_item_double_clicked(self, item: QListWidgetItem) -> None:
+        self._open_item(item)
+
+    def _open_item(self, item: QListWidgetItem) -> None:
         kind = item.data(KIND_ROLE)
         path = Path(item.data(PATH_ROLE))
         if kind == "dir":
             self.session.set_folder(path)
         elif kind == "pdf":
             self.session.open(path)
+        elif kind == "img":
+            self.session.statusMessage.emit(
+                "Images can't be previewed. Tick them and use Images → PDF."
+            )
 
     def _on_item_changed(self, _item: QListWidgetItem) -> None:
         # Keep already-picked files in their current order; new ticks go at the end.
