@@ -222,3 +222,8 @@ __marimo__/
 *.ppt
 # Keep our PyInstaller recipe: the "*.spec" rule above would ignore it
 !pdf-toolkit.spec
+
+# Keep bundled xcb library for Linux Qt compatibility
+!src/pdf_toolkit/resources/lib/
+!src/pdf_toolkit/resources/lib/**
+

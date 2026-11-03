@@ -51,7 +51,6 @@ datas = [
     (str(RESOURCES), "pdf_toolkit/resources"),
 ]
 datas += collect_data_files("rapidocr_onnxruntime")  # OCR models + config.yaml
-datas += collect_data_files("qtawesome")  # icon fonts
 datas += collect_data_files("pypdfium2")  # version info
 datas += collect_data_files("pypdfium2_raw")
 datas += collect_data_files("fpdf")  # used for page numbers
@@ -68,7 +67,15 @@ a = Analysis(
     hiddenimports=[],
     # Things we never use; leaving them out keeps the app smaller and
     # avoids two Qt versions fighting each other.
-    excludes=["tkinter", "PyQt5", "PyQt6", "matplotlib", "IPython", "pytest"],
+    excludes=[
+        "tkinter",
+        "PyQt5",
+        "PyQt6",
+        "matplotlib",
+        "IPython",
+        "pytest",
+        "qtawesome",
+    ],
     noarchive=False,
 )
 

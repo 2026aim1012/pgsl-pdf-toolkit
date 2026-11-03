@@ -782,7 +782,7 @@ wheels = [
 
 [[package]]
 name = "pgsl-pdf-toolkit"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "fpdf2" },
@@ -792,7 +792,6 @@ dependencies = [
     { name = "pillow" },
     { name = "pypdfium2" },
     { name = "pyside6" },
-    { name = "qtawesome" },
     { name = "rapidocr-onnxruntime" },
 ]
 
@@ -800,6 +799,7 @@ dependencies = [
 dev = [
     { name = "pyinstaller" },
     { name = "pytest" },
+    { name = "qtawesome" },
     { name = "ruff" },
 ]
 
@@ -811,7 +811,6 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pypdfium2", specifier = ">=5.14.0" },
     { name = "pyside6", specifier = ">=6.11.2" },
-    { name = "qtawesome", specifier = ">=1.4.2" },
     { name = "rapidocr-onnxruntime", specifier = ">=1.4.4" },
 ]
 
@@ -819,6 +818,7 @@ requires-dist = [
 dev = [
     { name = "pyinstaller", specifier = ">=6.22.3" },
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "qtawesome", specifier = ">=1.4.2" },
     { name = "ruff", specifier = ">=0.16.10" },
 ]
 

@@ -17,13 +17,31 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from pdf_toolkit.platform_compat import init_platform
+
+init_platform()
+
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSettings, QSize, Qt
+from PySide6.QtGui import (
+    QAction,
+    QFontDatabase,
+    QIcon,
+    QKeyEvent,
+    QKeySequence,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
+    QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QSpinBox,
     QSplitter,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +51,7 @@ _gui_dir = str(Path(__file__).resolve().parent)
 if _gui_dir not in sys.path:
     sys.path.insert(0, _gui_dir)
 
+from pdf_toolkit import __version__
 from pdf_toolkit.gui.explorer import ExplorerPanel
 from pdf_toolkit.gui.preview import PreviewPanel
 from pdf_toolkit.gui.session import Session
@@ -43,6 +62,50 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 APP_TITLE = "PGSL PDF Toolkit — IIT Ropar"
+
+_FONTS_LOADED = False
+
+
+def ensure_application_fonts() -> None:
+    """Register embedded fonts such as Devanagari into the global font database."""
+    global _FONTS_LOADED
+    if _FONTS_LOADED:
+        return
+    resources_dir = Path(__file__).resolve().parent.parent / "resources"
+    deva_font = resources_dir / "NotoSansDevanagari-Regular.ttf"
+    if deva_font.is_file():
+        QFontDatabase.addApplicationFont(str(deva_font))
+    _FONTS_LOADED = True
+
+
+def load_stylesheet(dark_mode: bool = False) -> str:
+    """Load application QSS stylesheet for light or dark mode."""
+    resources_dir = Path(__file__).resolve().parent.parent / "resources"
+    filename = "style_dark.qss" if dark_mode else "style.qss"
+    qss_path = resources_dir / filename
+    if qss_path.is_file():
+        try:
+            return qss_path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    if dark_mode:
+        fallback = resources_dir / "style.qss"
+        if fallback.is_file():
+            try:
+                return fallback.read_text(encoding="utf-8")
+            except OSError:
+                pass
+    return ""
+
+
+def get_resource_icon(name: str) -> QIcon:
+    """Load an icon by name from the application resources/icons directory."""
+    icon_path = (
+        Path(__file__).resolve().parent.parent / "resources" / "icons" / f"{name}.png"
+    )
+    if icon_path.is_file():
+        return QIcon(str(icon_path))
+    return QIcon()
 
 
 from pdf_toolkit.core import (
@@ -84,6 +147,7 @@ class MainWindow(QMainWindow):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        ensure_application_fonts()
         self.session = session or Session(self)
 
         # Built-in or injected operations from operations registry
@@ -93,9 +157,15 @@ class MainWindow(QMainWindow):
             else get_default_registry().bind_session(self.session)
         )
 
+        settings = QSettings("PGSL", "PDF Toolkit")
+        saved_dark = settings.value("dark_mode", False, type=bool)
+        self._dark_mode = False
+
         self._setup_window()
         self._build_layout()
         self._create_menus()
+        self._setup_ui_interactions()
+        self.set_dark_mode(saved_dark)
         self._connect_session()
         self._update_window_title()
 
@@ -103,9 +173,14 @@ class MainWindow(QMainWindow):
 
     def _setup_window(self) -> None:
         self.setWindowTitle(APP_TITLE)
-        # Default 1280x720, minimum 960x540 (fits >= 720p screens)
-        self.resize(1280, 720)
         self.setMinimumSize(960, 540)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+
+        # Restore window geometry (size & position) from QSettings
+        self._restore_window_geometry()
+
+        # Window icon left empty per design requirements (no title bar icon)
+        self.setWindowIcon(QIcon())
 
         # Global Esc shortcut to cancel background worker
         esc_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
@@ -113,6 +188,7 @@ class MainWindow(QMainWindow):
 
     def _build_layout(self) -> None:
         central_container = QWidget(self)
+        central_container.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self.setCentralWidget(central_container)
 
         root_layout = QVBoxLayout(central_container)
@@ -123,26 +199,33 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.splitter.setObjectName("mainSplitter")
         self.splitter.setChildrenCollapsible(False)
+        self.splitter.setOpaqueResize(True)
+        self.splitter.setHandleWidth(1)
 
         # 1. Left: Explorer Panel
         self.explorer_panel = ExplorerPanel(self.session, parent=self.splitter)
+        self.explorer_panel.setObjectName("sidePanel")
+        self.explorer_panel.setMinimumWidth(220)
         self.splitter.addWidget(self.explorer_panel)
 
         # 2. Center: Preview Panel
         self.preview_panel = PreviewPanel(self.session, parent=self.splitter)
+        self.preview_panel.setObjectName("previewContainer")
         self.splitter.addWidget(self.preview_panel)
 
         # 3. Right: Toolkit Panel
         self.toolkit_panel = Toolkit(
             self.session, operations=self.operations, parent=self.splitter
         )
+        self.toolkit_panel.setObjectName("toolkitContainer")
+        self.toolkit_panel.setMinimumWidth(330)
         self.splitter.addWidget(self.toolkit_panel)
 
-        # Proportions: Explorer ~250px, Toolkit ~280px, Preview occupies rest
-        self.splitter.setSizes([260, 740, 280])
+        # Proportions: Explorer ~250px, Toolkit ~340px, Preview occupies rest
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setStretchFactor(2, 0)
+        self._restore_splitter_sizes()
 
         root_layout.addWidget(self.splitter, stretch=1)
 
@@ -154,18 +237,20 @@ class MainWindow(QMainWindow):
 
     def _create_menus(self) -> None:
         menubar = self.menuBar()
-        menubar.setNativeMenuBar(True)
+        menubar.setNativeMenuBar(False)
 
         # ── File Menu ──
         file_menu = menubar.addMenu("&File")
 
         act_open_pdf = QAction("&Open PDF...", self)
+        act_open_pdf.setIcon(get_resource_icon("file-pdf"))
         act_open_pdf.setShortcut(QKeySequence("Ctrl+O"))
         act_open_pdf.setStatusTip("Open a PDF file for preview and editing")
         act_open_pdf.triggered.connect(self._on_open_pdf_dialog)
         file_menu.addAction(act_open_pdf)
 
         act_open_folder = QAction("Open &Folder...", self)
+        act_open_folder.setIcon(get_resource_icon("folder-open"))
         act_open_folder.setShortcut(QKeySequence("Ctrl+Shift+O"))
         act_open_folder.setStatusTip("Browse a folder in the Explorer panel")
         act_open_folder.triggered.connect(self._on_open_folder_dialog)
@@ -174,18 +259,21 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
 
         self.act_save = QAction("&Save", self)
+        self.act_save.setIcon(get_resource_icon("save"))
         self.act_save.setShortcut(QKeySequence("Ctrl+S"))
         self.act_save.setStatusTip("Save changes back to the original PDF")
         self.act_save.triggered.connect(self._on_save)
         file_menu.addAction(self.act_save)
 
         self.act_save_as = QAction("Save &As...", self)
+        self.act_save_as.setIcon(get_resource_icon("save-as"))
         self.act_save_as.setShortcut(QKeySequence("Ctrl+Shift+S"))
         self.act_save_as.setStatusTip("Save current PDF to a new file location")
         self.act_save_as.triggered.connect(self._on_save_as)
         file_menu.addAction(self.act_save_as)
 
         self.act_close_doc = QAction("&Close Document", self)
+        self.act_close_doc.setIcon(get_resource_icon("close"))
         self.act_close_doc.setShortcut(QKeySequence("Ctrl+W"))
         self.act_close_doc.setStatusTip("Close the current document")
         self.act_close_doc.triggered.connect(self._on_close_document)
@@ -194,6 +282,7 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
 
         act_exit = QAction("E&xit", self)
+        act_exit.setIcon(get_resource_icon("exit"))
         act_exit.setShortcut(QKeySequence("Ctrl+Q"))
         act_exit.setStatusTip("Exit the application")
         act_exit.triggered.connect(self.close)
@@ -203,6 +292,7 @@ class MainWindow(QMainWindow):
         edit_menu = menubar.addMenu("&Edit")
 
         self.act_undo = QAction("&Undo", self)
+        self.act_undo.setIcon(get_resource_icon("undo"))
         self.act_undo.setShortcut(QKeySequence("Ctrl+Z"))
         self.act_undo.setStatusTip("Undo the last modifying operation")
         self.act_undo.triggered.connect(self.session.undo)
@@ -213,11 +303,13 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("&View")
 
         act_prev_page = QAction("&Previous Page", self)
+        act_prev_page.setIcon(get_resource_icon("chevron-left"))
         act_prev_page.setShortcuts([QKeySequence("Left"), QKeySequence("Page Up")])
         act_prev_page.triggered.connect(self.session.prev_page)
         view_menu.addAction(act_prev_page)
 
         act_next_page = QAction("&Next Page", self)
+        act_next_page.setIcon(get_resource_icon("chevron-right"))
         act_next_page.setShortcuts([QKeySequence("Right"), QKeySequence("Page Down")])
         act_next_page.triggered.connect(self.session.next_page)
         view_menu.addAction(act_next_page)
@@ -225,6 +317,7 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
 
         act_toggle_explorer = QAction("Toggle &Explorer Panel", self)
+        act_toggle_explorer.setIcon(get_resource_icon("panel-explorer"))
         act_toggle_explorer.setShortcut(QKeySequence("F8"))
         act_toggle_explorer.setCheckable(True)
         act_toggle_explorer.setChecked(True)
@@ -232,6 +325,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(act_toggle_explorer)
 
         act_toggle_toolkit = QAction("Toggle &Toolkit Panel", self)
+        act_toggle_toolkit.setIcon(get_resource_icon("panel-toolkit"))
         act_toggle_toolkit.setShortcut(QKeySequence("F9"))
         act_toggle_toolkit.setCheckable(True)
         act_toggle_toolkit.setChecked(True)
@@ -239,23 +333,58 @@ class MainWindow(QMainWindow):
         view_menu.addAction(act_toggle_toolkit)
 
         act_reset_layout = QAction("&Reset Panel Layout", self)
+        act_reset_layout.setIcon(get_resource_icon("reset-layout"))
         act_reset_layout.setShortcut(QKeySequence("Ctrl+0"))
         act_reset_layout.triggered.connect(
-            lambda: self.splitter.setSizes([260, 740, 280])
+            lambda: self.splitter.setSizes([250, 690, 340])
         )
         view_menu.addAction(act_reset_layout)
+
+        self.act_toggle_theme = QAction("Toggle &Dark Mode", self)
+        self.act_toggle_theme.setIcon(get_resource_icon("moon"))
+        self.act_toggle_theme.setShortcut(QKeySequence("Ctrl+D"))
+        self.act_toggle_theme.setStatusTip("Toggle between light and dark appearance")
+        self.act_toggle_theme.setToolTip("Toggle dark mode (Ctrl+D)")
+        self.act_toggle_theme.triggered.connect(self.toggle_theme)
+        view_menu.addAction(self.act_toggle_theme)
 
         # ── Help Menu ──
         help_menu = menubar.addMenu("&Help")
 
-        act_shortcuts = QAction("&Keyboard Shortcuts", self)
-        act_shortcuts.setShortcut(QKeySequence("F1"))
-        act_shortcuts.triggered.connect(self._show_shortcuts_dialog)
-        help_menu.addAction(act_shortcuts)
+        self.act_shortcuts = QAction("&Keyboard Shortcuts", self)
+        self.act_shortcuts.setIcon(get_resource_icon("keyboard"))
+        self.act_shortcuts.setShortcut(QKeySequence("F1"))
+        self.act_shortcuts.setStatusTip("View accessible keyboard shortcuts guide")
+        self.act_shortcuts.setToolTip("View keyboard shortcuts (F1)")
+        self.act_shortcuts.triggered.connect(self._show_shortcuts_dialog)
+        help_menu.addAction(self.act_shortcuts)
 
-        act_about = QAction("&About PGSL PDF Toolkit", self)
-        act_about.triggered.connect(self._show_about_dialog)
-        help_menu.addAction(act_about)
+        self.act_about = QAction("&About PGSL PDF Toolkit", self)
+        self.act_about.setIcon(get_resource_icon("info"))
+        self.act_about.setStatusTip("View application version and credits")
+        self.act_about.setToolTip("About PGSL PDF Toolkit")
+        self.act_about.triggered.connect(self._show_about_dialog)
+        help_menu.addAction(self.act_about)
+
+        # Store app menus and ensure only one menu is ever shown at a time
+        self._app_menus = [file_menu, edit_menu, view_menu, help_menu]
+        for m in self._app_menus:
+            m.aboutToShow.connect(
+                lambda current=m: [
+                    other.hide() for other in self._app_menus if other is not current
+                ]
+            )
+            m.installEventFilter(self)
+
+        # ── Corner Widget: Dark/Light Mode Switch Button ──
+        self.theme_btn = QPushButton("Dark Mode", self)
+        self.theme_btn.setObjectName("themeToggleBtn")
+        self.theme_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.theme_btn.setIcon(get_resource_icon("moon"))
+        self.theme_btn.setToolTip("Switch to dark appearance (Ctrl+D)")
+        self.theme_btn.setAccessibleName("Toggle light or dark appearance")
+        self.theme_btn.clicked.connect(self.toggle_theme)
+        menubar.setCornerWidget(self.theme_btn, Qt.Corner.TopRightCorner)
 
     # ── Session Connections ──────────────────────────────────────────
 
@@ -368,18 +497,27 @@ class MainWindow(QMainWindow):
 
     def _show_shortcuts_dialog(self) -> None:
         msg = (
-            "<b>Keyboard Shortcuts:</b><br><br>"
-            "<table>"
+            "<h3>Keyboard Shortcuts</h3>"
+            "<table cellpadding='4' cellspacing='2'>"
+            "<tr><th align='left'>Shortcut</th><th align='left'>Action</th></tr>"
             "<tr><td><b>Ctrl + O</b></td><td>Open PDF document</td></tr>"
             "<tr><td><b>Ctrl + Shift + O</b></td><td>Open folder in explorer</td></tr>"
             "<tr><td><b>Ctrl + S</b></td><td>Save document</td></tr>"
             "<tr><td><b>Ctrl + Shift + S</b></td><td>Save document as...</td></tr>"
             "<tr><td><b>Ctrl + W</b></td><td>Close current document</td></tr>"
+            "<tr><td><b>Ctrl + Q</b></td><td>Exit application</td></tr>"
             "<tr><td><b>Ctrl + Z</b></td><td>Undo last operation</td></tr>"
             "<tr><td><b>Left / Right</b></td><td>Previous / Next page</td></tr>"
-            "<tr><td><b>F8 / F9</b></td><td>Toggle Explorer / Toolkit panel</td></tr>"
+            "<tr><td><b>Page Up / Down</b></td><td>Previous / Next page</td></tr>"
+            "<tr><td><b>Tab / Shift + Tab</b></td><td>Move focus between controls</td></tr>"
+            "<tr><td><b>Space</b></td><td>Toggle selection / Activate focused button</td></tr>"
+            "<tr><td><b>Enter</b></td><td>Open selected file in Explorer</td></tr>"
+            "<tr><td><b>F8</b></td><td>Toggle Explorer panel</td></tr>"
+            "<tr><td><b>F9</b></td><td>Toggle Toolkit panel</td></tr>"
             "<tr><td><b>Ctrl + 0</b></td><td>Reset panel layout</td></tr>"
+            "<tr><td><b>Ctrl + D</b></td><td>Toggle dark / light appearance mode</td></tr>"
             "<tr><td><b>Escape</b></td><td>Cancel running operation</td></tr>"
+            "<tr><td><b>F1</b></td><td>Show this keyboard shortcuts guide</td></tr>"
             "</table>"
         )
         QMessageBox.information(self, "Keyboard Shortcuts", msg)
@@ -387,7 +525,7 @@ class MainWindow(QMainWindow):
     def _show_about_dialog(self) -> None:
         msg = (
             "<h3>PGSL PDF Toolkit</h3>"
-            "<p><b>Version 0.1.0 (Milestone 2)</b></p>"
+            f"<p><b>Version {__version__}</b></p>"
             "<p>Developed for IIT Ropar Store & Purchase and Student Affairs sections.</p>"
             "<p>A safe, fully offline desktop application for PDF manipulation:</p>"
             "<ul>"
@@ -403,6 +541,75 @@ class MainWindow(QMainWindow):
         QMessageBox.about(self, "About PGSL PDF Toolkit", msg)
 
     # ── Lifecycle ────────────────────────────────────────────────────
+
+    def _setup_ui_interactions(self) -> None:
+        """Configure button focus policies for clean mouse and keyboard behavior."""
+        for btn in self.findChildren(QPushButton):
+            btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+
+    def _close_all_menus(self) -> None:
+        """Properly dismiss all open menus and reset menubar popup state."""
+        app = QApplication.instance()
+        if hasattr(self, "_app_menus"):
+            for m in self._app_menus:
+                if m.isVisible():
+                    esc_ev = QKeyEvent(
+                        QEvent.Type.KeyPress,
+                        Qt.Key.Key_Escape,
+                        Qt.KeyboardModifier.NoModifier,
+                    )
+                    if app:
+                        app.sendEvent(m, esc_ev)
+                    if m.isVisible():
+                        m.hide()
+
+        mb = self.menuBar()
+        if mb and app:
+            app.sendEvent(mb, QEvent(QEvent.Type.Leave))
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Close open menu when mouse moves completely out of menu and menubar range."""
+        if (
+            isinstance(watched, QMenu)
+            and hasattr(self, "_app_menus")
+            and watched in self._app_menus
+            and event.type() == QEvent.Type.MouseMove
+        ):
+            pos = event.globalPosition().toPoint()
+            m_rect = QRect(watched.mapToGlobal(QPoint(0, 0)), watched.size())
+            mb = self.menuBar()
+            mb_rect = QRect(mb.mapToGlobal(QPoint(0, 0)), mb.size()) if mb else QRect()
+            in_menu_zone = (
+                m_rect.contains(pos)
+                or mb_rect.contains(pos)
+                or any(
+                    other.isVisible()
+                    and QRect(other.mapToGlobal(QPoint(0, 0)), other.size()).contains(
+                        pos
+                    )
+                    for other in self._app_menus
+                )
+            )
+            if not in_menu_zone:
+                self._close_all_menus()
+        return super().eventFilter(watched, event)
+
+    def mousePressEvent(self, event: Any) -> None:
+        """Clicking somewhere empty in the window reverts all active UI states."""
+        self._revert_ui_state()
+        super().mousePressEvent(event)
+
+    def _revert_ui_state(self) -> None:
+        """Clear keyboard focus and close any open menus."""
+        self._close_all_menus()
+
+        app = QApplication.instance()
+        if app:
+            focused = app.focusWidget()
+            if focused is not None and not isinstance(
+                focused, (QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox)
+            ):
+                focused.clearFocus()
 
     def closeEvent(self, event: Any) -> None:
         """Prompt to save if modified, then cleanup temporary session state."""
@@ -422,6 +629,98 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
 
+        # Persist window geometry and splitter sizes
+        self._save_settings()
+
         # Clean up temporary files and cancel running workers
         self.session.cleanup()
         event.accept()
+
+    def toggle_theme(self) -> None:
+        """Toggle between light and dark appearance modes."""
+        self.set_dark_mode(not self._dark_mode)
+
+    def set_dark_mode(self, enabled: bool) -> None:
+        """Apply light or dark theme and update button / action text."""
+        self._dark_mode = bool(enabled)
+        if hasattr(self, "theme_btn") and self.theme_btn is not None:
+            self.theme_btn.setText("Light Mode" if self._dark_mode else "Dark Mode")
+            self.theme_btn.setIcon(
+                get_resource_icon("sun")
+                if self._dark_mode
+                else get_resource_icon("moon")
+            )
+            self.theme_btn.setToolTip(
+                "Switch to light appearance (Ctrl+D)"
+                if self._dark_mode
+                else "Switch to dark appearance (Ctrl+D)"
+            )
+            self.theme_btn.clearFocus()
+        if hasattr(self, "act_toggle_theme") and self.act_toggle_theme is not None:
+            self.act_toggle_theme.setText(
+                "Toggle &Light Mode" if self._dark_mode else "Toggle &Dark Mode"
+            )
+            self.act_toggle_theme.setIcon(
+                get_resource_icon("sun")
+                if self._dark_mode
+                else get_resource_icon("moon")
+            )
+
+        stylesheet = load_stylesheet(dark_mode=self._dark_mode)
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(stylesheet)
+
+    # ── Settings Persistence ─────────────────────────────────────────
+
+    def _save_settings(self) -> None:
+        """Persist window geometry and splitter sizes using standard QSettings key."""
+        settings = QSettings("PGSL", "PDF Toolkit")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("window_size", self.size())
+        settings.setValue("window_pos", self.pos())
+        settings.setValue("dark_mode", self._dark_mode)
+        if hasattr(self, "splitter") and self.splitter is not None:
+            sizes = self.splitter.sizes()
+            if sum(sizes) > 150:
+                settings.setValue("splitter_sizes", sizes)
+
+    def _restore_window_geometry(self) -> None:
+        """Restore window geometry and size from QSettings, falling back to default 1280x720."""
+        settings = QSettings("PGSL", "PDF Toolkit")
+        geo = settings.value("geometry")
+        if geo:
+            self.restoreGeometry(geo)
+        size = settings.value("window_size")
+        if isinstance(size, QSize) and size.isValid():
+            self.resize(size)
+        elif isinstance(size, (tuple, list)) and len(size) == 2:
+            try:
+                self.resize(int(size[0]), int(size[1]))
+            except (ValueError, TypeError):
+                pass
+        elif not geo:
+            self.resize(1280, 720)
+
+        pos = settings.value("window_pos")
+        if isinstance(pos, QPoint):
+            self.move(pos)
+        elif isinstance(pos, (tuple, list)) and len(pos) == 2:
+            try:
+                self.move(int(pos[0]), int(pos[1]))
+            except (ValueError, TypeError):
+                pass
+
+    def _restore_splitter_sizes(self) -> None:
+        """Restore splitter sizes from QSettings, falling back to default [250, 690, 340]."""
+        settings = QSettings("PGSL", "PDF Toolkit")
+        saved = settings.value("splitter_sizes")
+        if saved and isinstance(saved, list) and len(saved) == 3:
+            try:
+                sizes = [int(x) for x in saved]
+                if all(s > 0 for s in sizes):
+                    self.splitter.setSizes(sizes)
+                    return
+            except (ValueError, TypeError):
+                pass
+        self.splitter.setSizes([250, 690, 340])
