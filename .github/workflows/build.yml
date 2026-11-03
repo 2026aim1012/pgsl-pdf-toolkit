@@ -1,0 +1,121 @@
+# build.yml
+# ---------
+# Builds the double-click app on Windows, macOS and Linux.
+#
+# PyInstaller can only build for the system it runs on, so GitHub starts
+# three machines (one per system) and builds on each at the same time.
+#
+# When it runs:
+#   - by hand: Actions tab -> "Build apps" -> "Run workflow"
+#   - on a pull request that changes the build files (to test them)
+#   - when a version tag like v0.2.0 is pushed: the three apps are also
+#     attached to that GitHub Release
+#
+# The finished apps appear under the run's "Artifacts" (kept 14 days).
+
+name: Build apps
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "pdf-toolkit.spec"
+      - "packaging/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/build.yml"
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # one system failing should not stop the other two
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+          - os: macos-latest # Apple Silicon (M1 and later)
+            label: macOS
+          - os: ubuntu-latest
+            label: Linux
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      # Qt needs a few system libraries on Linux, even without a screen.
+      - name: Install Qt system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+
+      - name: Build the app
+        run: uv run pyinstaller pdf-toolkit.spec --noconfirm
+
+      # Checks the files are in, prints the size, and starts the app once.
+      - name: Check the build
+        run: uv run python packaging/check_build.py --run
+
+      # Zip the app so it downloads as one file.
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        # ditto keeps the .app's internal links intact; plain zip breaks them
+        run: ditto -c -k --keepParent "dist/PGSL PDF Toolkit.app" PGSL-PDF-Toolkit-macOS.zip
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/pgsl-pdf-toolkit -DestinationPath PGSL-PDF-Toolkit-Windows.zip
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        # tar keeps the "can run" permission on the program file
+        run: tar -czf PGSL-PDF-Toolkit-Linux.tar.gz -C dist pgsl-pdf-toolkit
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: PGSL-PDF-Toolkit-${{ matrix.label }}
+          path: |
+            PGSL-PDF-Toolkit-*.zip
+            PGSL-PDF-Toolkit-*.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+
+  release:
+    name: Attach apps to the GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed to create the release
+    steps:
+      - name: Download the three apps
+        uses: actions/download-artifact@v4
+        with:
+          path: apps
+          merge-multiple: true
+
+      - name: Create the release with the apps attached
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/*
+          generate_release_notes: true
