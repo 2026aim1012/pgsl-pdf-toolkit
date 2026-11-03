@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, QSettings, QSize, Qt
 from PySide6.QtGui import QAction, QFontDatabase, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -119,9 +119,10 @@ class MainWindow(QMainWindow):
 
     def _setup_window(self) -> None:
         self.setWindowTitle(APP_TITLE)
-        # Default 1280x720, minimum 960x540 (fits >= 720p screens)
-        self.resize(1280, 720)
         self.setMinimumSize(960, 540)
+
+        # Restore window geometry (size & position) from QSettings
+        self._restore_window_geometry()
 
         # Set application / window icon
         icons_dir = Path(__file__).resolve().parent.parent / "resources" / "icons"
@@ -168,10 +169,10 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.toolkit_panel)
 
         # Proportions: Explorer ~250px, Toolkit ~340px, Preview occupies rest
-        self.splitter.setSizes([250, 690, 340])
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setStretchFactor(2, 0)
+        self._restore_splitter_sizes()
 
         root_layout.addWidget(self.splitter, stretch=1)
 
@@ -463,6 +464,62 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
 
+        # Persist window geometry and splitter sizes
+        self._save_settings()
+
         # Clean up temporary files and cancel running workers
         self.session.cleanup()
         event.accept()
+
+    # ── Settings Persistence ─────────────────────────────────────────
+
+    def _save_settings(self) -> None:
+        """Persist window geometry and splitter sizes using standard QSettings key."""
+        settings = QSettings("PGSL", "PDF Toolkit")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("window_size", self.size())
+        settings.setValue("window_pos", self.pos())
+        if hasattr(self, "splitter") and self.splitter is not None:
+            sizes = self.splitter.sizes()
+            if sum(sizes) > 150:
+                settings.setValue("splitter_sizes", sizes)
+
+    def _restore_window_geometry(self) -> None:
+        """Restore window geometry and size from QSettings, falling back to default 1280x720."""
+        settings = QSettings("PGSL", "PDF Toolkit")
+        geo = settings.value("geometry")
+        if geo:
+            self.restoreGeometry(geo)
+        size = settings.value("window_size")
+        if isinstance(size, QSize) and size.isValid():
+            self.resize(size)
+        elif isinstance(size, (tuple, list)) and len(size) == 2:
+            try:
+                self.resize(int(size[0]), int(size[1]))
+            except (ValueError, TypeError):
+                pass
+        elif not geo:
+            self.resize(1280, 720)
+
+        pos = settings.value("window_pos")
+        if isinstance(pos, QPoint):
+            self.move(pos)
+        elif isinstance(pos, (tuple, list)) and len(pos) == 2:
+            try:
+                self.move(int(pos[0]), int(pos[1]))
+            except (ValueError, TypeError):
+                pass
+
+    def _restore_splitter_sizes(self) -> None:
+        """Restore splitter sizes from QSettings, falling back to default [250, 690, 340]."""
+        settings = QSettings("PGSL", "PDF Toolkit")
+        saved = settings.value("splitter_sizes")
+        if saved and isinstance(saved, list) and len(saved) == 3:
+            try:
+                sizes = [int(x) for x in saved]
+                if all(s > 0 for s in sizes):
+                    self.splitter.setSizes(sizes)
+                    return
+            except (ValueError, TypeError):
+                pass
+        self.splitter.setSizes([250, 690, 340])

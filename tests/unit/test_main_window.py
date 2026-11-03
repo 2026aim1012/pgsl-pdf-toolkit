@@ -93,6 +93,11 @@ def test_session_navigation_helpers(qapp, tmp_path):
 
 
 def test_main_window_creation(qapp):
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings("PGSL", "PDF Toolkit")
+    settings.clear()
+
     session = Session()
     window = MainWindow(session=session)
 
@@ -193,3 +198,31 @@ def test_ensure_application_fonts(qapp):
     ensure_application_fonts()
     families = QFontDatabase.families()
     assert any("Devanagari" in f for f in families)
+
+
+def test_window_geometry_persistence(qapp):
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings("PGSL", "PDF Toolkit")
+    settings.clear()
+
+    s1 = Session()
+    w1 = MainWindow(session=s1)
+    w1.show()
+    w1.resize(1150, 680)
+    w1.splitter.setSizes([240, 500, 350])
+    expected_splitter = w1.splitter.sizes()
+    w1.close()
+    s1.cleanup()
+
+    # Reopen to verify restore
+    s2 = Session()
+    w2 = MainWindow(session=s2)
+    w2.show()
+    assert w2.width() == 1150
+    assert w2.height() == 680
+    assert w2.splitter.sizes() == expected_splitter
+    w2.close()
+    s2.cleanup()
+
+    settings.clear()
