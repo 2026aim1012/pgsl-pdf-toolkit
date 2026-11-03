@@ -327,7 +327,7 @@ class ExplorerPanel(QFrame):
         if chosen is None:
             return
         if chosen is act_open:
-            self._on_item_clicked(item)
+            self._open_item(item)
         elif chosen is act_tick:
             new_state = (
                 Qt.CheckState.Unchecked
