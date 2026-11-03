@@ -82,6 +82,16 @@ def load_stylesheet(dark_mode: bool = False) -> str:
     return ""
 
 
+def get_resource_icon(name: str) -> QIcon:
+    """Load an icon by name from the application resources/icons directory."""
+    icon_path = (
+        Path(__file__).resolve().parent.parent / "resources" / "icons" / f"{name}.png"
+    )
+    if icon_path.is_file():
+        return QIcon(str(icon_path))
+    return QIcon()
+
+
 from pdf_toolkit.core import (
     delete_pages,
     export_text,
@@ -217,12 +227,14 @@ class MainWindow(QMainWindow):
         file_menu = menubar.addMenu("&File")
 
         act_open_pdf = QAction("&Open PDF...", self)
+        act_open_pdf.setIcon(get_resource_icon("file-pdf"))
         act_open_pdf.setShortcut(QKeySequence("Ctrl+O"))
         act_open_pdf.setStatusTip("Open a PDF file for preview and editing")
         act_open_pdf.triggered.connect(self._on_open_pdf_dialog)
         file_menu.addAction(act_open_pdf)
 
         act_open_folder = QAction("Open &Folder...", self)
+        act_open_folder.setIcon(get_resource_icon("folder-open"))
         act_open_folder.setShortcut(QKeySequence("Ctrl+Shift+O"))
         act_open_folder.setStatusTip("Browse a folder in the Explorer panel")
         act_open_folder.triggered.connect(self._on_open_folder_dialog)
@@ -231,18 +243,21 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
 
         self.act_save = QAction("&Save", self)
+        self.act_save.setIcon(get_resource_icon("save"))
         self.act_save.setShortcut(QKeySequence("Ctrl+S"))
         self.act_save.setStatusTip("Save changes back to the original PDF")
         self.act_save.triggered.connect(self._on_save)
         file_menu.addAction(self.act_save)
 
         self.act_save_as = QAction("Save &As...", self)
+        self.act_save_as.setIcon(get_resource_icon("save-as"))
         self.act_save_as.setShortcut(QKeySequence("Ctrl+Shift+S"))
         self.act_save_as.setStatusTip("Save current PDF to a new file location")
         self.act_save_as.triggered.connect(self._on_save_as)
         file_menu.addAction(self.act_save_as)
 
         self.act_close_doc = QAction("&Close Document", self)
+        self.act_close_doc.setIcon(get_resource_icon("close"))
         self.act_close_doc.setShortcut(QKeySequence("Ctrl+W"))
         self.act_close_doc.setStatusTip("Close the current document")
         self.act_close_doc.triggered.connect(self._on_close_document)
@@ -251,6 +266,7 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
 
         act_exit = QAction("E&xit", self)
+        act_exit.setIcon(get_resource_icon("exit"))
         act_exit.setShortcut(QKeySequence("Ctrl+Q"))
         act_exit.setStatusTip("Exit the application")
         act_exit.triggered.connect(self.close)
@@ -260,6 +276,7 @@ class MainWindow(QMainWindow):
         edit_menu = menubar.addMenu("&Edit")
 
         self.act_undo = QAction("&Undo", self)
+        self.act_undo.setIcon(get_resource_icon("undo"))
         self.act_undo.setShortcut(QKeySequence("Ctrl+Z"))
         self.act_undo.setStatusTip("Undo the last modifying operation")
         self.act_undo.triggered.connect(self.session.undo)
@@ -270,11 +287,13 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("&View")
 
         act_prev_page = QAction("&Previous Page", self)
+        act_prev_page.setIcon(get_resource_icon("chevron-left"))
         act_prev_page.setShortcuts([QKeySequence("Left"), QKeySequence("Page Up")])
         act_prev_page.triggered.connect(self.session.prev_page)
         view_menu.addAction(act_prev_page)
 
         act_next_page = QAction("&Next Page", self)
+        act_next_page.setIcon(get_resource_icon("chevron-right"))
         act_next_page.setShortcuts([QKeySequence("Right"), QKeySequence("Page Down")])
         act_next_page.triggered.connect(self.session.next_page)
         view_menu.addAction(act_next_page)
@@ -282,6 +301,7 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
 
         act_toggle_explorer = QAction("Toggle &Explorer Panel", self)
+        act_toggle_explorer.setIcon(get_resource_icon("panel-explorer"))
         act_toggle_explorer.setShortcut(QKeySequence("F8"))
         act_toggle_explorer.setCheckable(True)
         act_toggle_explorer.setChecked(True)
@@ -289,6 +309,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(act_toggle_explorer)
 
         act_toggle_toolkit = QAction("Toggle &Toolkit Panel", self)
+        act_toggle_toolkit.setIcon(get_resource_icon("panel-toolkit"))
         act_toggle_toolkit.setShortcut(QKeySequence("F9"))
         act_toggle_toolkit.setCheckable(True)
         act_toggle_toolkit.setChecked(True)
@@ -296,6 +317,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(act_toggle_toolkit)
 
         act_reset_layout = QAction("&Reset Panel Layout", self)
+        act_reset_layout.setIcon(get_resource_icon("reset-layout"))
         act_reset_layout.setShortcut(QKeySequence("Ctrl+0"))
         act_reset_layout.triggered.connect(
             lambda: self.splitter.setSizes([250, 690, 340])
@@ -303,6 +325,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(act_reset_layout)
 
         self.act_toggle_theme = QAction("Toggle &Dark Mode", self)
+        self.act_toggle_theme.setIcon(get_resource_icon("moon"))
         self.act_toggle_theme.setShortcut(QKeySequence("Ctrl+D"))
         self.act_toggle_theme.setStatusTip("Toggle between light and dark appearance")
         self.act_toggle_theme.setToolTip("Toggle dark mode (Ctrl+D)")
@@ -313,6 +336,7 @@ class MainWindow(QMainWindow):
         help_menu = menubar.addMenu("&Help")
 
         self.act_shortcuts = QAction("&Keyboard Shortcuts", self)
+        self.act_shortcuts.setIcon(get_resource_icon("keyboard"))
         self.act_shortcuts.setShortcut(QKeySequence("F1"))
         self.act_shortcuts.setStatusTip("View accessible keyboard shortcuts guide")
         self.act_shortcuts.setToolTip("View keyboard shortcuts (F1)")
@@ -320,6 +344,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction(self.act_shortcuts)
 
         self.act_about = QAction("&About PGSL PDF Toolkit", self)
+        self.act_about.setIcon(get_resource_icon("info"))
         self.act_about.setStatusTip("View application version and credits")
         self.act_about.setToolTip("About PGSL PDF Toolkit")
         self.act_about.triggered.connect(self._show_about_dialog)
@@ -327,8 +352,9 @@ class MainWindow(QMainWindow):
 
         # ── Corner Widget: Dark/Light Mode Switch Button ──
         menubar.setNativeMenuBar(False)
-        self.theme_btn = QPushButton("🌙 Dark Mode", self)
+        self.theme_btn = QPushButton("Dark Mode", self)
         self.theme_btn.setObjectName("themeToggleBtn")
+        self.theme_btn.setIcon(get_resource_icon("moon"))
         self.theme_btn.setToolTip("Switch to dark appearance (Ctrl+D)")
         self.theme_btn.setAccessibleName("Toggle light or dark appearance")
         self.theme_btn.clicked.connect(self.toggle_theme)
@@ -523,8 +549,11 @@ class MainWindow(QMainWindow):
         """Apply light or dark theme and update button / action text."""
         self._dark_mode = bool(enabled)
         if hasattr(self, "theme_btn") and self.theme_btn is not None:
-            self.theme_btn.setText(
-                "☀️ Light Mode" if self._dark_mode else "🌙 Dark Mode"
+            self.theme_btn.setText("Light Mode" if self._dark_mode else "Dark Mode")
+            self.theme_btn.setIcon(
+                get_resource_icon("sun")
+                if self._dark_mode
+                else get_resource_icon("moon")
             )
             self.theme_btn.setToolTip(
                 "Switch to light appearance (Ctrl+D)"
@@ -534,6 +563,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "act_toggle_theme") and self.act_toggle_theme is not None:
             self.act_toggle_theme.setText(
                 "Toggle &Light Mode" if self._dark_mode else "Toggle &Dark Mode"
+            )
+            self.act_toggle_theme.setIcon(
+                get_resource_icon("sun")
+                if self._dark_mode
+                else get_resource_icon("moon")
             )
 
         stylesheet = load_stylesheet(dark_mode=self._dark_mode)

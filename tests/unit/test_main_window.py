@@ -239,20 +239,25 @@ def test_dark_mode_toggle(qapp):
 
     # Initial state should be light mode
     assert not window._dark_mode
-    assert "Dark Mode" in window.theme_btn.text()
+    assert window.theme_btn.text() == "Dark Mode"
+    assert not window.theme_btn.icon().isNull()
     assert window.act_toggle_theme is not None
     assert "Dark Mode" in window.act_toggle_theme.text()
+    assert not window.act_save.icon().isNull()
+    assert not window.act_shortcuts.icon().isNull()
 
     # Click theme switch button to switch to dark mode
     window.theme_btn.click()
     assert window._dark_mode
-    assert "Light Mode" in window.theme_btn.text()
+    assert window.theme_btn.text() == "Light Mode"
+    assert not window.theme_btn.icon().isNull()
     assert "Light Mode" in window.act_toggle_theme.text()
 
     # Trigger action to switch back to light mode
     window.act_toggle_theme.trigger()
     assert not window._dark_mode
-    assert "Dark Mode" in window.theme_btn.text()
+    assert window.theme_btn.text() == "Dark Mode"
+    assert not window.theme_btn.icon().isNull()
 
     # Persist and reopen
     window.set_dark_mode(True)
