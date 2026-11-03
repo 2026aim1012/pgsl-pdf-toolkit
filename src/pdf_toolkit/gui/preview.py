@@ -3,7 +3,7 @@ from bisect import bisect_left
 from pathlib import Path
 
 import pypdfium2 as pdfium
-from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QMimeData, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QDrag, QIcon, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -253,6 +253,27 @@ class ThumbStrip(QListWidget):
         painter.end()
 
 
+class SmoothPageLabel(QLabel):
+    """Page view label that smoothly scales the current page pixmap during resize."""
+
+    def paintEvent(self, event):
+        pm = self.pixmap()
+        if pm and not pm.isNull():
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            w = self.width() - 40
+            h = self.height() - 20
+            if w > 10 and h > 10:
+                scaled_size = pm.size().scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio)
+                x = (self.width() - scaled_size.width()) // 2
+                y = (self.height() - scaled_size.height()) // 2
+                target_rect = QRect(x, y, scaled_size.width(), scaled_size.height())
+                painter.drawPixmap(target_rect, pm)
+            painter.end()
+        else:
+            super().paintEvent(event)
+
+
 class PreviewPanel(QWidget):
     def __init__(self, session, parent=None):
         super().__init__(parent)
@@ -283,7 +304,7 @@ class PreviewPanel(QWidget):
         layout.addWidget(title)
 
         # 1) The big page
-        self.page_label = QLabel()
+        self.page_label = SmoothPageLabel()
         self.page_label.setObjectName("pageView")
         self.page_label.setAccessibleName("Page view")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

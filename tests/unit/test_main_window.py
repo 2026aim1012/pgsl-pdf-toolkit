@@ -93,6 +93,11 @@ def test_session_navigation_helpers(qapp, tmp_path):
 
 
 def test_main_window_creation(qapp):
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings("PGSL", "PDF Toolkit")
+    settings.clear()
+
     session = Session()
     window = MainWindow(session=session)
 
@@ -117,6 +122,12 @@ def test_main_window_creation(qapp):
     assert window.act_save_as is not None
     assert window.act_undo is not None
     assert not window.act_undo.isEnabled()
+    assert window.act_shortcuts is not None
+    assert window.act_about is not None
+    assert window.act_shortcuts.shortcut().toString() == "F1"
+
+    # Title bar icon removed per design
+    assert window.windowIcon().isNull()
 
     window.close()
     session.cleanup()
@@ -144,6 +155,181 @@ def test_main_window_document_lifecycle(qapp, tmp_path):
     session.close()
     assert window.windowTitle() == APP_TITLE
     assert not window.act_save.isEnabled()
+
+    window.close()
+    session.cleanup()
+
+
+def test_help_menu_dialogs(qapp, monkeypatch):
+    session = Session()
+    window = MainWindow(session=session)
+
+    shortcuts_shown = []
+    about_shown = []
+
+    monkeypatch.setattr(
+        "pdf_toolkit.gui.main_window.QMessageBox.information",
+        lambda parent, title, text: shortcuts_shown.append((title, text)),
+    )
+    monkeypatch.setattr(
+        "pdf_toolkit.gui.main_window.QMessageBox.about",
+        lambda parent, title, text: about_shown.append((title, text)),
+    )
+
+    window.act_shortcuts.trigger()
+    assert len(shortcuts_shown) == 1
+    assert "Keyboard Shortcuts" in shortcuts_shown[0][0]
+    assert "Ctrl + O" in shortcuts_shown[0][1]
+
+    window.act_about.trigger()
+    assert len(about_shown) == 1
+    assert "About" in about_shown[0][0]
+    assert "0.2.0" in about_shown[0][1]
+
+    window.close()
+    session.cleanup()
+
+
+def test_ensure_application_fonts(qapp):
+    from PySide6.QtGui import QFontDatabase
+
+    from pdf_toolkit.gui.main_window import ensure_application_fonts
+
+    ensure_application_fonts()
+    families = QFontDatabase.families()
+    assert any("Devanagari" in f for f in families)
+
+
+def test_window_geometry_persistence(qapp):
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings("PGSL", "PDF Toolkit")
+    settings.clear()
+
+    s1 = Session()
+    w1 = MainWindow(session=s1)
+    w1.show()
+    w1.resize(1150, 680)
+    w1.splitter.setSizes([240, 500, 350])
+    expected_splitter = w1.splitter.sizes()
+    w1.close()
+    s1.cleanup()
+
+    # Reopen to verify restore
+    s2 = Session()
+    w2 = MainWindow(session=s2)
+    w2.show()
+    assert w2.width() == 1150
+    assert w2.height() == 680
+    assert w2.splitter.sizes() == expected_splitter
+    w2.close()
+    s2.cleanup()
+
+    settings.clear()
+
+
+def test_dark_mode_toggle(qapp):
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings("PGSL", "PDF Toolkit")
+    settings.clear()
+
+    session = Session()
+    window = MainWindow(session=session)
+
+    # Initial state should be light mode
+    assert not window._dark_mode
+    assert window.theme_btn.text() == "Dark Mode"
+    assert not window.theme_btn.icon().isNull()
+    assert window.act_toggle_theme is not None
+    assert "Dark Mode" in window.act_toggle_theme.text()
+    assert not window.act_save.icon().isNull()
+    assert not window.act_shortcuts.icon().isNull()
+
+    # Click theme switch button to switch to dark mode
+    window.theme_btn.click()
+    assert window._dark_mode
+    assert window.theme_btn.text() == "Light Mode"
+    assert not window.theme_btn.icon().isNull()
+    assert "Light Mode" in window.act_toggle_theme.text()
+
+    # Trigger action to switch back to light mode
+    window.act_toggle_theme.trigger()
+    assert not window._dark_mode
+    assert window.theme_btn.text() == "Dark Mode"
+    assert not window.theme_btn.icon().isNull()
+
+    # Persist and reopen
+    window.set_dark_mode(True)
+    window._save_settings()
+    window.close()
+    session.cleanup()
+
+    # Verify saved state is restored on next window instantiation
+    session2 = Session()
+    window2 = MainWindow(session=session2)
+    assert window2._dark_mode
+    assert "Light Mode" in window2.theme_btn.text()
+    window2.close()
+    session2.cleanup()
+
+    settings.clear()
+
+
+def test_ui_interaction_and_focus_revert(qapp):
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QPushButton
+
+    from pdf_toolkit.gui.preview import SmoothPageLabel
+
+    session = Session()
+    window = MainWindow(session=session)
+    window.show()
+
+    # 1. Window icon should be removed (empty)
+    assert window.windowIcon().isNull()
+
+    # 2. Clicking a button should NOT leave permanent focus
+    window.theme_btn.click()
+    assert not window.theme_btn.hasFocus()
+
+    # 3. All buttons should have TabFocus policy (keyboard navigation works, mouse click doesn't stick)
+    buttons = window.findChildren(QPushButton)
+    assert len(buttons) >= 15
+    for btn in buttons:
+        assert btn.focusPolicy() == Qt.FocusPolicy.TabFocus
+
+    # 4. Menubar actions exist and top menus are managed
+    assert window.menuBar() is not None
+    assert len(window.menuBar().actions()) >= 4
+    assert hasattr(window, "_app_menus")
+    assert len(window._app_menus) == 4
+    for menu in window._app_menus:
+        assert menu.parent() is window.menuBar()
+
+    # 5. Opening one menu closes any previously open menu
+    m0, m1 = window._app_menus[0], window._app_menus[1]
+    m0.show()
+    assert m0.isVisible()
+    m1.aboutToShow.emit()
+    assert not m0.isVisible()
+
+    # 6. Clicking empty area in window reverts active UI state and closes open menus
+    m1.show()
+    assert m1.isVisible()
+    press_ev = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(window.rect().center()),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    window.mousePressEvent(press_ev)
+    assert not m1.isVisible()
+
+    # 7. Smooth preview scaling label is active
+    assert isinstance(window.preview_panel.page_label, SmoothPageLabel)
 
     window.close()
     session.cleanup()
