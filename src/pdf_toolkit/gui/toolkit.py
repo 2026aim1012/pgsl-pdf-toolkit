@@ -31,9 +31,9 @@ by session.py.
 from __future__ import annotations
 
 from collections.abc import Callable
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -45,9 +45,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSlider,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -107,12 +107,82 @@ class Toolkit(QWidget):
         self._compression_pending = False
 
         self._build_ui()
+        self._setup_accessibility()
         self._connect_session()
         self._refresh_ui()
 
     # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
+
+    def _make_section(self, title: str) -> tuple[QGroupBox, QVBoxLayout]:
+        """Create a checkable section whose contents can be folded away."""
+        section = QGroupBox(title)
+        section.setCheckable(True)
+        section.setChecked(True)
+        section.setToolTip(f"Show or hide the {title.lower()} tools.")
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        def set_expanded(expanded: bool, box: QGroupBox = section) -> None:
+            child_layout = box.layout()
+            if child_layout is None:
+                return
+            for index in range(child_layout.count()):
+                item = child_layout.itemAt(index)
+                widget = item.widget()
+                if widget is not None:
+                    widget.setVisible(expanded)
+
+        section.toggled.connect(set_expanded)
+        return section, layout
+
+    def _setup_accessibility(self) -> None:
+        """Add tooltips, accessible names, and a predictable tab sequence."""
+        # Give every visible widget a useful tooltip, including labels and
+        # controls that are not currently enabled. More specific tips below
+        # override these defaults.
+        for widget in self.findChildren(QWidget):
+            if widget.toolTip().strip():
+                continue
+            name = widget.accessibleName().strip()
+            if not name:
+                name = widget.text().strip() if hasattr(widget, "text") else ""
+            if not name and hasattr(widget, "placeholderText"):
+                name = widget.placeholderText().strip()
+            if name:
+                widget.setToolTip(name)
+
+        self.compress_quality.setAccessibleName("Compression quality")
+        self.compress_quality.setAccessibleDescription(
+            "Choose the requested compression quality from 1 to 100 percent."
+        )
+        self.convert_dpi.setAccessibleName("Image resolution in DPI")
+        self.convert_dpi.setAccessibleDescription(
+            "Choose the resolution used when rendering PDF pages as images."
+        )
+        self.insert_at.setAccessibleName("Insert before page number")
+        self.number_start.setAccessibleName("First page number to print")
+        self.number_start_page.setAccessibleName("Document page where numbering starts")
+        self.watermark_opacity.setAccessibleName("Watermark opacity percentage")
+        self.watermark_rotation.setAccessibleName("Watermark rotation in degrees")
+
+        # Controls in visual top-to-bottom order. setTabOrder() establishes
+        # an explicit chain instead of relying on widget construction order.
+        order = [
+            self.scope_combo, self.rotate_angle, self.rotate_button,
+            self.reverse_button, self.delete_button, self.merge_button,
+            self.insert_pick_button, self.insert_at, self.insert_button,
+            self.number_position, self.number_start, self.number_start_page,
+            self.number_numerals, self.number_button, self.undo_button,
+            self.compress_quality, self.compress_button,
+            self.images_to_pdf_button, self.pdf_to_images_button, self.convert_dpi,
+            self.watermark_text, self.watermark_opacity, self.watermark_rotation,
+            self.watermark_button, self.ocr_button, self.export_text_button,
+        ]
+        for first, second in pairwise(order):
+            QWidget.setTabOrder(first, second)
 
     def _build_ui(self) -> None:
         """Construct the complete toolkit panel."""
@@ -126,14 +196,56 @@ class Toolkit(QWidget):
         title.setStyleSheet("font-size: 18px; font-weight: bold; padding-bottom: 4px;")
         root.addWidget(title)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        # Use tabs instead of a single tall, scrollable list. The Pages
+        # category has its own compact sub-tabs because it contains the
+        # largest number of controls.
+        self.category_tabs = QTabWidget()
+        self.category_tabs.setDocumentMode(True)
+        root.addWidget(self.category_tabs, 1)
 
-        content = QWidget()
-        self.content_layout = QVBoxLayout(content)
-        self.content_layout.setContentsMargins(2, 2, 2, 2)
-        self.content_layout.setSpacing(8)
+        self.pages_section = QWidget()
+        pages_root = QVBoxLayout(self.pages_section)
+        pages_root.setContentsMargins(4, 4, 4, 4)
+        pages_root.setSpacing(6)
+
+        self.pages_tabs = QTabWidget()
+        self.pages_tabs.setDocumentMode(True)
+        pages_root.addWidget(self.pages_tabs)
+
+        pages_arrange = QWidget()
+        self.pages_layout = QVBoxLayout(pages_arrange)
+        self.pages_layout.setContentsMargins(2, 2, 2, 2)
+        self.pages_layout.setSpacing(6)
+        self.pages_tabs.addTab(pages_arrange, "Arrange & edit")
+
+        pages_insert = QWidget()
+        self.insert_tab_layout = QVBoxLayout(pages_insert)
+        self.insert_tab_layout.setContentsMargins(2, 2, 2, 2)
+        self.insert_tab_layout.setSpacing(6)
+        self.pages_tabs.addTab(pages_insert, "Insert")
+
+        pages_numbers = QWidget()
+        self.numbers_tab_layout = QVBoxLayout(pages_numbers)
+        self.numbers_tab_layout.setContentsMargins(2, 2, 2, 2)
+        self.numbers_tab_layout.setSpacing(6)
+        self.pages_tabs.addTab(pages_numbers, "Page numbers")
+
+        pages_history = QWidget()
+        self.history_tab_layout = QVBoxLayout(pages_history)
+        self.history_tab_layout.setContentsMargins(2, 2, 2, 2)
+        self.history_tab_layout.setSpacing(6)
+        self.pages_tabs.addTab(pages_history, "History")
+
+        self.optimise_section, self.optimise_layout = self._make_section("Optimise")
+        self.convert_section, self.convert_layout = self._make_section("Convert")
+        self.stamp_section, self.stamp_layout = self._make_section("Stamp")
+        self.text_section, self.text_layout = self._make_section("Text")
+
+        self.category_tabs.addTab(self.pages_section, "Pages")
+        self.category_tabs.addTab(self.optimise_section, "Optimise")
+        self.category_tabs.addTab(self.convert_section, "Convert")
+        self.category_tabs.addTab(self.stamp_section, "Stamp")
+        self.category_tabs.addTab(self.text_section, "Text")
 
         # --------------------------------------------------------------
         # Page scope
@@ -160,7 +272,7 @@ class Toolkit(QWidget):
 
         scope_layout.addRow(self.page_info_label)
 
-        self.content_layout.addWidget(scope_group)
+        self.pages_layout.addWidget(scope_group)
 
         # --------------------------------------------------------------
         # Rotate
@@ -183,7 +295,7 @@ class Toolkit(QWidget):
         rotate_controls.addWidget(self.rotate_button)
 
         rotate_layout.addLayout(rotate_controls)
-        self.content_layout.addWidget(rotate_group)
+        self.pages_layout.addWidget(rotate_group)
 
         # --------------------------------------------------------------
         # Reverse
@@ -197,7 +309,7 @@ class Toolkit(QWidget):
 
         reverse_layout.addWidget(self.reverse_button)
 
-        self.content_layout.addWidget(reverse_group)
+        self.pages_layout.addWidget(reverse_group)
 
         # --------------------------------------------------------------
         # Delete
@@ -215,7 +327,7 @@ class Toolkit(QWidget):
         delete_layout.addWidget(delete_hint)
         delete_layout.addWidget(self.delete_button)
 
-        self.content_layout.addWidget(delete_group)
+        self.pages_layout.addWidget(delete_group)
 
         # --------------------------------------------------------------
         # Merge
@@ -235,7 +347,7 @@ class Toolkit(QWidget):
         merge_layout.addWidget(self.merge_info_label)
         merge_layout.addWidget(self.merge_button)
 
-        self.content_layout.addWidget(merge_group)
+        self.pages_layout.addWidget(merge_group)
 
         # --------------------------------------------------------------
         # Compress
@@ -264,7 +376,7 @@ class Toolkit(QWidget):
         compress_layout.addWidget(self.compress_quality)
         compress_layout.addWidget(self.compress_size_label)
         compress_layout.addWidget(self.compress_button)
-        self.content_layout.addWidget(compress_group)
+        self.optimise_layout.addWidget(compress_group)
 
         # --------------------------------------------------------------
         # Convert
@@ -289,7 +401,7 @@ class Toolkit(QWidget):
         convert_layout.addWidget(self.images_to_pdf_button)
         convert_layout.addWidget(self.pdf_to_images_button)
         convert_layout.addLayout(dpi_row)
-        self.content_layout.addWidget(convert_group)
+        self.convert_layout.addWidget(convert_group)
 
         # --------------------------------------------------------------
         # Insert pages
@@ -312,7 +424,7 @@ class Toolkit(QWidget):
         insert_layout.addRow("Selected file:", self.insert_path_label)
         insert_layout.addRow("Position:", self.insert_at)
         insert_layout.addRow(self.insert_button)
-        self.content_layout.addWidget(insert_group)
+        self.insert_tab_layout.addWidget(insert_group)
 
         # --------------------------------------------------------------
         # Page numbers
@@ -342,7 +454,7 @@ class Toolkit(QWidget):
         numbers_layout.addRow("Start page:", self.number_start_page)
         numbers_layout.addRow("Numerals:", self.number_numerals)
         numbers_layout.addRow(self.number_button)
-        self.content_layout.addWidget(numbers_group)
+        self.numbers_tab_layout.addWidget(numbers_group)
 
         # --------------------------------------------------------------
         # Watermark
@@ -379,7 +491,7 @@ class Toolkit(QWidget):
         watermark_layout.addLayout(watermark_options)
         watermark_layout.addWidget(self.watermark_button)
 
-        self.content_layout.addWidget(watermark_group)
+        self.stamp_layout.addWidget(watermark_group)
 
         # --------------------------------------------------------------
         # OCR
@@ -399,7 +511,7 @@ class Toolkit(QWidget):
         ocr_layout.addWidget(ocr_hint)
         ocr_layout.addWidget(self.ocr_button)
 
-        self.content_layout.addWidget(ocr_group)
+        self.text_layout.addWidget(ocr_group)
 
         # --------------------------------------------------------------
         # Export text
@@ -413,7 +525,7 @@ class Toolkit(QWidget):
 
         export_layout.addWidget(self.export_text_button)
 
-        self.content_layout.addWidget(export_group)
+        self.text_layout.addWidget(export_group)
 
         # --------------------------------------------------------------
         # Undo
@@ -427,13 +539,28 @@ class Toolkit(QWidget):
 
         undo_layout.addWidget(self.undo_button)
 
-        self.content_layout.addWidget(undo_group)
+        self.history_tab_layout.addWidget(undo_group)
 
-        # Spacer
-        self.content_layout.addStretch(1)
+        for page_layout in (
+            self.pages_layout, self.insert_tab_layout,
+            self.numbers_tab_layout, self.history_tab_layout,
+        ):
+            page_layout.addStretch(1)
 
-        scroll.setWidget(content)
-        root.addWidget(scroll)
+        # Helpful descriptions for fields whose labels alone are ambiguous.
+        self.scope_combo.setToolTip("Choose whether page operations affect the whole PDF, the current page, or preview-selected pages.")
+        self.rotate_angle.setToolTip("Choose the clockwise rotation angle.")
+        self.compress_quality.setToolTip("Set the requested compression quality. Higher values preserve more detail.")
+        self.convert_dpi.setToolTip("Set the image resolution in dots per inch (DPI). Higher values create larger images.")
+        self.insert_at.setToolTip("Choose the page number before which the selected PDF will be inserted.")
+        self.number_position.setToolTip("Choose where page numbers appear on each page.")
+        self.number_start.setToolTip("Choose the number printed on the first numbered page.")
+        self.number_start_page.setToolTip("Choose which document page receives the first page number.")
+        self.number_numerals.setToolTip("Choose the numeral style used for page numbers.")
+        self.watermark_text.setToolTip("Enter the text to place over the PDF pages.")
+        self.watermark_opacity.setToolTip("Choose how visible the watermark will be.")
+        self.watermark_rotation.setToolTip("Choose the angle of the watermark.")
+
 
     # ------------------------------------------------------------------
     # Session connections
@@ -493,12 +620,27 @@ class Toolkit(QWidget):
             )
 
     def _on_operation_error(self, message: str) -> None:
-        """Clear pending compression feedback if a background job fails."""
+        """Show a short, plain-language explanation when an operation fails."""
         if self._compression_pending:
             self._compression_pending = False
-            self.compress_size_label.setText(
-                "Compression failed; see the error message."
-            )
+            self.compress_size_label.setText("Compression did not finish.")
+
+        raw = str(message or "").strip()
+        lower = raw.lower()
+        if "permission" in lower or "access is denied" in lower:
+            friendly = "The file could not be changed because access was denied. Check that you have permission and that it is not open in another app."
+        elif "no space" in lower or "disk full" in lower:
+            friendly = "There is not enough free space to finish this task."
+        elif "password" in lower or "encrypted" in lower:
+            friendly = "This PDF is password-protected. Unlock it before trying again."
+        elif "not found" in lower or "no such file" in lower:
+            friendly = "The file could not be found. It may have been moved or deleted."
+        elif "invalid pdf" in lower or "malformed" in lower or "damaged" in lower:
+            friendly = "This PDF appears to be damaged or is not a valid PDF file."
+        else:
+            # Avoid dumping tracebacks or implementation details into the UI.
+            friendly = "The task could not be completed. Please check the file and try again."
+        self._show_warning("Could not complete the task", friendly)
 
     def _on_picked_files_changed(self, files: list[Path]) -> None:
         """Receive Explorer's picked-file list."""
@@ -605,6 +747,37 @@ class Toolkit(QWidget):
 
         # Undo has its own Session signal, but busy still takes precedence.
         self.undo_button.setEnabled(not busy and bool(self.session.can_undo))
+        self._refresh_button_tooltips(busy, has_document, has_selection, has_merge_files)
+
+    def _refresh_button_tooltips(
+        self, busy: bool, has_document: bool, has_selection: bool, has_merge_files: bool
+    ) -> None:
+        """Explain both the purpose and disabled reason for every action."""
+        states = {
+            self.rotate_button: ("Rotate pages by the selected angle.", has_document and self._has_operation("rotate"), "Open a PDF first, or this tool is not available."),
+            self.reverse_button: ("Reverse the page order in the open PDF.", has_document and self._has_operation("reverse"), "Open a PDF first, or this tool is not available."),
+            self.delete_button: ("Delete pages selected in the preview.", has_selection and self._has_operation("delete"), "Select pages in the preview first, or this tool is not available."),
+            self.merge_button: ("Merge the PDFs selected in Explorer.", has_merge_files and has_document and self._has_operation("merge"), "Open a PDF and select at least two PDFs in Explorer; this tool must also be available."),
+            self.compress_button: ("Reduce the size of the open PDF.", has_document and self._has_operation("compress"), "Open a PDF first, or this tool is not available."),
+            self.images_to_pdf_button: ("Create a PDF from selected image files.", self._has_operation("images_to_pdf"), "Image-to-PDF conversion is not available."),
+            self.pdf_to_images_button: ("Save each page of the open PDF as an image.", has_document and self._has_operation("pdf_to_images"), "Open a PDF first, or this tool is not available."),
+            self.insert_pick_button: ("Choose another PDF whose pages will be inserted.", True, ""),
+            self.insert_button: ("Insert the chosen PDF before the selected page.", bool(self.insert_path_label.property("insert_path")) and has_document, "Choose an insert PDF and open a document first."),
+            self.number_button: ("Add page numbers to the open PDF.", has_document and self._has_operation("page_numbers"), "Open a PDF first, or this tool is not available."),
+            self.watermark_button: ("Apply the watermark text to the open PDF.", has_document and bool(self.watermark_text.text().strip()) and self._has_operation("watermark"), "Open a PDF, enter watermark text, and make sure this tool is available."),
+            self.ocr_button: ("Recognise text in the open PDF.", has_document and self._has_operation("ocr"), "Open a PDF first, or this tool is not available."),
+            self.export_text_button: ("Extract text from the open PDF.", has_document and self._has_operation("export_text"), "Open a PDF first, or this tool is not available."),
+            self.undo_button: ("Undo the most recent document change.", bool(self.session.can_undo), "There is no operation to undo."),
+        }
+        for button, (purpose, prerequisite, reason) in states.items():
+            if busy:
+                button.setToolTip(f"{purpose} Temporarily unavailable while another task is running.")
+            elif not prerequisite:
+                button.setToolTip(f"{purpose} {reason}")
+            elif not button.isEnabled():
+                button.setToolTip(f"{purpose} This action is currently unavailable.")
+            else:
+                button.setToolTip(purpose)
 
     def _update_page_info(self) -> None:
         """Update the human-readable page information label."""
