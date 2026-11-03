@@ -20,9 +20,11 @@ from typing import TYPE_CHECKING, Any
 from PySide6.QtCore import QPoint, QSettings, QSize, Qt
 from PySide6.QtGui import QAction, QFontDatabase, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -58,6 +60,26 @@ def ensure_application_fonts() -> None:
     if deva_font.is_file():
         QFontDatabase.addApplicationFont(str(deva_font))
     _FONTS_LOADED = True
+
+
+def load_stylesheet(dark_mode: bool = False) -> str:
+    """Load application QSS stylesheet for light or dark mode."""
+    resources_dir = Path(__file__).resolve().parent.parent / "resources"
+    filename = "style_dark.qss" if dark_mode else "style.qss"
+    qss_path = resources_dir / filename
+    if qss_path.is_file():
+        try:
+            return qss_path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    if dark_mode:
+        fallback = resources_dir / "style.qss"
+        if fallback.is_file():
+            try:
+                return fallback.read_text(encoding="utf-8")
+            except OSError:
+                pass
+    return ""
 
 
 from pdf_toolkit.core import (
@@ -109,9 +131,14 @@ class MainWindow(QMainWindow):
             else get_default_registry().bind_session(self.session)
         )
 
+        settings = QSettings("PGSL", "PDF Toolkit")
+        saved_dark = settings.value("dark_mode", False, type=bool)
+        self._dark_mode = False
+
         self._setup_window()
         self._build_layout()
         self._create_menus()
+        self.set_dark_mode(saved_dark)
         self._connect_session()
         self._update_window_title()
 
@@ -275,6 +302,13 @@ class MainWindow(QMainWindow):
         )
         view_menu.addAction(act_reset_layout)
 
+        self.act_toggle_theme = QAction("Toggle &Dark Mode", self)
+        self.act_toggle_theme.setShortcut(QKeySequence("Ctrl+D"))
+        self.act_toggle_theme.setStatusTip("Toggle between light and dark appearance")
+        self.act_toggle_theme.setToolTip("Toggle dark mode (Ctrl+D)")
+        self.act_toggle_theme.triggered.connect(self.toggle_theme)
+        view_menu.addAction(self.act_toggle_theme)
+
         # ── Help Menu ──
         help_menu = menubar.addMenu("&Help")
 
@@ -290,6 +324,15 @@ class MainWindow(QMainWindow):
         self.act_about.setToolTip("About PGSL PDF Toolkit")
         self.act_about.triggered.connect(self._show_about_dialog)
         help_menu.addAction(self.act_about)
+
+        # ── Corner Widget: Dark/Light Mode Switch Button ──
+        menubar.setNativeMenuBar(False)
+        self.theme_btn = QPushButton("🌙 Dark Mode", self)
+        self.theme_btn.setObjectName("themeToggleBtn")
+        self.theme_btn.setToolTip("Switch to dark appearance (Ctrl+D)")
+        self.theme_btn.setAccessibleName("Toggle light or dark appearance")
+        self.theme_btn.clicked.connect(self.toggle_theme)
+        menubar.setCornerWidget(self.theme_btn, Qt.Corner.TopRightCorner)
 
     # ── Session Connections ──────────────────────────────────────────
 
@@ -420,6 +463,7 @@ class MainWindow(QMainWindow):
             "<tr><td><b>F8</b></td><td>Toggle Explorer panel</td></tr>"
             "<tr><td><b>F9</b></td><td>Toggle Toolkit panel</td></tr>"
             "<tr><td><b>Ctrl + 0</b></td><td>Reset panel layout</td></tr>"
+            "<tr><td><b>Ctrl + D</b></td><td>Toggle dark / light appearance mode</td></tr>"
             "<tr><td><b>Escape</b></td><td>Cancel running operation</td></tr>"
             "<tr><td><b>F1</b></td><td>Show this keyboard shortcuts guide</td></tr>"
             "</table>"
@@ -471,6 +515,32 @@ class MainWindow(QMainWindow):
         self.session.cleanup()
         event.accept()
 
+    def toggle_theme(self) -> None:
+        """Toggle between light and dark appearance modes."""
+        self.set_dark_mode(not self._dark_mode)
+
+    def set_dark_mode(self, enabled: bool) -> None:
+        """Apply light or dark theme and update button / action text."""
+        self._dark_mode = bool(enabled)
+        if hasattr(self, "theme_btn") and self.theme_btn is not None:
+            self.theme_btn.setText(
+                "☀️ Light Mode" if self._dark_mode else "🌙 Dark Mode"
+            )
+            self.theme_btn.setToolTip(
+                "Switch to light appearance (Ctrl+D)"
+                if self._dark_mode
+                else "Switch to dark appearance (Ctrl+D)"
+            )
+        if hasattr(self, "act_toggle_theme") and self.act_toggle_theme is not None:
+            self.act_toggle_theme.setText(
+                "Toggle &Light Mode" if self._dark_mode else "Toggle &Dark Mode"
+            )
+
+        stylesheet = load_stylesheet(dark_mode=self._dark_mode)
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(stylesheet)
+
     # ── Settings Persistence ─────────────────────────────────────────
 
     def _save_settings(self) -> None:
@@ -479,6 +549,7 @@ class MainWindow(QMainWindow):
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("window_size", self.size())
         settings.setValue("window_pos", self.pos())
+        settings.setValue("dark_mode", self._dark_mode)
         if hasattr(self, "splitter") and self.splitter is not None:
             sizes = self.splitter.sizes()
             if sum(sizes) > 150:

@@ -226,3 +226,46 @@ def test_window_geometry_persistence(qapp):
     s2.cleanup()
 
     settings.clear()
+
+
+def test_dark_mode_toggle(qapp):
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings("PGSL", "PDF Toolkit")
+    settings.clear()
+
+    session = Session()
+    window = MainWindow(session=session)
+
+    # Initial state should be light mode
+    assert not window._dark_mode
+    assert "Dark Mode" in window.theme_btn.text()
+    assert window.act_toggle_theme is not None
+    assert "Dark Mode" in window.act_toggle_theme.text()
+
+    # Click theme switch button to switch to dark mode
+    window.theme_btn.click()
+    assert window._dark_mode
+    assert "Light Mode" in window.theme_btn.text()
+    assert "Light Mode" in window.act_toggle_theme.text()
+
+    # Trigger action to switch back to light mode
+    window.act_toggle_theme.trigger()
+    assert not window._dark_mode
+    assert "Dark Mode" in window.theme_btn.text()
+
+    # Persist and reopen
+    window.set_dark_mode(True)
+    window._save_settings()
+    window.close()
+    session.cleanup()
+
+    # Verify saved state is restored on next window instantiation
+    session2 = Session()
+    window2 = MainWindow(session=session2)
+    assert window2._dark_mode
+    assert "Light Mode" in window2.theme_btn.text()
+    window2.close()
+    session2.cleanup()
+
+    settings.clear()
