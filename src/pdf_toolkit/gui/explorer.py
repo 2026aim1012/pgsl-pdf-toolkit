@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
+    QWidget,
 )
 
 from pdf_toolkit.core.converter import images_to_pdf
@@ -198,12 +199,12 @@ class ExplorerPanel(QFrame):
         self.img_pdf_btn.setAccessibleName("Convert ticked images to PDF")
         btn_row.addWidget(self.img_pdf_btn)
 
-        self.setTabOrder(self.open_btn, self.list)
-        self.setTabOrder(self.list, self.order_btn)
-        self.setTabOrder(self.order_btn, self.img_pdf_btn)
-
         layout.addLayout(btn_row)
         self._update_buttons()
+
+        QWidget.setTabOrder(self.open_btn, self.list)
+        QWidget.setTabOrder(self.list, self.order_btn)
+        QWidget.setTabOrder(self.order_btn, self.img_pdf_btn)
 
         hint = QLabel(
             "Arrows move, Space ticks, Enter opens. Ctrl + click to select several files."
