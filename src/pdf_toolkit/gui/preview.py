@@ -1,3 +1,4 @@
+import sys
 from bisect import bisect_left
 from pathlib import Path
 
@@ -24,6 +25,15 @@ from pdf_toolkit.core.page_ops import move_pages_order, reorder_pages
 THUMB_SIZE = QSize(60, 80)  # box each thumbnail picture fits into
 DRAWN = Qt.ItemDataRole.UserRole  # marks thumbnails already rendered
 PAGES_MIME = "application/x-pgsl-pages"  # tags our own thumbnail drags
+
+# Keyboard shortcut for moving pages, written the way each system shows it.
+# (Qt's "Ctrl" is the Command key on a Mac.)
+if sys.platform == "darwin":
+    MOVE_KEYS = "⌘⇧← / ⌘⇧→"
+    MOVE_KEYS_SPOKEN = "Command Shift Left or Right arrow"
+else:
+    MOVE_KEYS = "Ctrl+Shift+← / →"
+    MOVE_KEYS_SPOKEN = "Control Shift Left or Right arrow"
 
 
 def render_page(pdf, index: int, box_w: int, box_h: int, dpr: float = 1.0) -> QPixmap:
@@ -60,6 +70,26 @@ def drop_index(centers: list[float], x: float) -> int:
         drop_index([10, 30, 50], 99)  -> 3
     """
     return bisect_left(centers, x)
+
+
+def keyboard_move_target(page_count: int, pages: list[int], step: int) -> int | None:
+    """Where the keyboard shortcut moves `pages`: one place left (step -1) or
+    right (step +1). Returns the drop position, in the same form as a drag
+    (the page they go in front of), or None when they can't move further.
+
+        keyboard_move_target(5, [2], -1)  -> 1     (page 3 goes before page 2)
+        keyboard_move_target(5, [2], +1)  -> 4     (page 3 goes after page 4)
+        keyboard_move_target(5, [0], -1)  -> None  (already first)
+
+    Pages that are not next to each other are gathered together, the same
+    as when they are dragged.
+    """
+    if not pages or page_count < 2:
+        return None
+    first, last = min(pages), max(pages)
+    if step < 0:
+        return first - 1 if first > 0 else None
+    return min(last + 2, page_count) if last < page_count - 1 else None
 
 
 # ----------------------------------------------------------------------
@@ -100,6 +130,39 @@ class ThumbStrip(QListWidget):
         self.setDropIndicatorShown(False)  # we draw our own line instead
 
         self._drop_at = None  # where the blue line is drawn while dragging
+
+        # Screen readers (VoiceOver, Narrator) read these out.
+        self.setAccessibleName("Page thumbnails")
+        self.setAccessibleDescription(
+            "Arrow keys go to the previous or next page. Shift with an arrow "
+            f"selects several pages. {MOVE_KEYS_SPOKEN} moves the selected pages."
+        )
+
+    # ----- moving pages with the keyboard -----
+
+    def keyPressEvent(self, event):
+        """Ctrl+Shift+Left/Right (Cmd+Shift on a Mac) moves the selected pages
+        one place, the keyboard version of dragging them. Everything else
+        (arrows, Home, End, Shift+arrows) is handled by Qt as usual."""
+        mods = event.modifiers()
+        ctrl_shift = (
+            bool(mods & Qt.KeyboardModifier.ControlModifier)
+            and bool(mods & Qt.KeyboardModifier.ShiftModifier)
+            and not mods & Qt.KeyboardModifier.AltModifier
+        )
+        if ctrl_shift and event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            event.accept()
+            if not self.dragEnabled():
+                return  # a job is running, same rule as dragging
+            pages = sorted(self.row(item) for item in self.selectedItems())
+            if not pages and self.currentRow() >= 0:
+                pages = [self.currentRow()]
+            step = -1 if event.key() == Qt.Key.Key_Left else 1
+            target = keyboard_move_target(self.count(), pages, step)
+            if target is not None:
+                self.pagesDropped.emit(pages, target)
+            return
+        super().keyPressEvent(event)
 
     # ----- starting a drag -----
 
@@ -209,6 +272,7 @@ class PreviewPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _build_ui(self):
+        self.setAccessibleName("Preview")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 12)
         layout.setSpacing(10)
@@ -221,6 +285,7 @@ class PreviewPanel(QWidget):
         # 1) The big page
         self.page_label = QLabel()
         self.page_label.setObjectName("pageView")
+        self.page_label.setAccessibleName("Page view")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # "Ignored" = the layout decides the size. Without it, a big page
         # picture would stop the window from being made smaller.
@@ -235,12 +300,20 @@ class PreviewPanel(QWidget):
         for button in (self.prev_btn, self.next_btn):
             button.setObjectName("navButton")
             button.setFixedWidth(36)
+            # Reachable with Tab on every system (macOS skips buttons otherwise)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.prev_btn.setAccessibleName("Previous page")
+        self.prev_btn.setToolTip("Previous page (Left arrow or Page Up)")
+        self.next_btn.setAccessibleName("Next page")
+        self.next_btn.setToolTip("Next page (Right arrow or Page Down)")
 
         self.page_box = QSpinBox()
         self.page_box.setFixedWidth(60)
         self.page_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.page_box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.page_box.setKeyboardTracking(False)  # jump on Enter, not every key
+        self.page_box.setAccessibleName("Page number")
+        self.page_box.setToolTip("Type a page number and press Enter")
 
         self.total_label = QLabel("/ 0")
 
@@ -264,12 +337,18 @@ class PreviewPanel(QWidget):
         layout.addWidget(strip)
 
         hint = QLabel(
-            "Click a thumbnail to jump · Ctrl + click to select "
-            "several · Drag to move pages"
+            "Click a thumbnail to jump · Ctrl + click to select several · "
+            f"Drag or {MOVE_KEYS} to move pages"
         )
         hint.setObjectName("hint")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setWordWrap(True)
         layout.addWidget(hint)
+
+        # Tab goes left to right along the controls, then into the thumbnails
+        QWidget.setTabOrder(self.prev_btn, self.page_box)
+        QWidget.setTabOrder(self.page_box, self.next_btn)
+        QWidget.setTabOrder(self.next_btn, self.thumbs)
 
         # Timers that wait a moment before redrawing, so resizing or scrolling
         # quickly doesn't redraw 100 times a second.
@@ -358,6 +437,7 @@ class PreviewPanel(QWidget):
         self.page_box.setRange(1, max(1, count))
         self.page_box.blockSignals(False)
         self.total_label.setText(f"/ {count}")
+        self.total_label.setAccessibleName(f"of {count} pages")
 
     def show_page(self, index: int):
         """Show page `index` (0-based) and keep the controls in sync."""
@@ -373,6 +453,8 @@ class PreviewPanel(QWidget):
 
         self.prev_btn.setEnabled(self.index > 0)
         self.next_btn.setEnabled(self.index < count - 1)
+        # What a screen reader says for the big page, e.g. "Page 3 of 8"
+        self.page_label.setAccessibleDescription(f"Page {self.index + 1} of {count}")
 
         # Highlight the matching thumbnail. Skipped when it is already the
         # current one, so a Ctrl+click multi-selection is not wiped out.
@@ -454,6 +536,7 @@ class PreviewPanel(QWidget):
     def _show_empty(self, text="No document open\nPick a PDF in the Explorer"):
         self.page_label.clear()
         self.page_label.setText(text)
+        self.page_label.setAccessibleDescription(text.replace("\n", ". "))
         self.total_label.setText("/ 0")
         self.thumbs.clear()
         for widget in (self.prev_btn, self.next_btn, self.page_box):
@@ -479,7 +562,11 @@ class PreviewPanel(QWidget):
         blank = QPixmap(THUMB_SIZE)
         blank.fill(QColor("white"))
         for i in range(count):
-            self.thumbs.addItem(QListWidgetItem(QIcon(blank), str(i + 1)))
+            item = QListWidgetItem(QIcon(blank), str(i + 1))
+            # Read out as "Page 3" instead of just "3"
+            item.setData(Qt.ItemDataRole.AccessibleTextRole, f"Page {i + 1}")
+            item.setToolTip(f"Page {i + 1}")
+            self.thumbs.addItem(item)
         self.thumbs.blockSignals(False)
         self._thumb_timer.start()
 
