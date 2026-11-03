@@ -167,31 +167,47 @@ class ExplorerPanel(QFrame):
 
         self.open_btn = QPushButton("Open folder…")
         self.open_btn.setObjectName("openFolder")
+        self.open_btn.setAccessibleName("Open folder")
+        self.open_btn.setToolTip("Choose a folder with PDFs and images")
         layout.addWidget(self.open_btn)
 
         self.path_label = ElidedLabel("No folder opened")
         self.path_label.setObjectName("pathLabel")
+        self.path_label.setAccessibleName("Current folder")
         layout.addWidget(self.path_label)
 
         self.list = ExplorerList()
         self.list.setObjectName("explorer")
         self.list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list.setAccessibleName("Files in this folder")
+        self.list.setAccessibleDescription(
+            "Arrow keys move, Space ticks a file, Enter opens a file or folder."
+        )
+        self.list.setToolTip("Arrows move, Space ticks, Enter opens")
         layout.addWidget(self.list, stretch=1)
 
         btn_row = QHBoxLayout()
         self.order_btn = QPushButton("Order…")
         self.order_btn.setToolTip("Choose the order of ticked files")
+        self.order_btn.setAccessibleName("Choose file order")
         btn_row.addWidget(self.order_btn)
 
         self.img_pdf_btn = QPushButton("Images → PDF")
         self.img_pdf_btn.setToolTip("Combine the ticked images into one PDF")
+        self.img_pdf_btn.setAccessibleName("Convert ticked images to PDF")
         btn_row.addWidget(self.img_pdf_btn)
+
+        self.setTabOrder(self.open_btn, self.list)
+        self.setTabOrder(self.list, self.order_btn)
+        self.setTabOrder(self.order_btn, self.img_pdf_btn)
 
         layout.addLayout(btn_row)
         self._update_buttons()
 
-        hint = QLabel("Ctrl + click or drag to select multiple files")
+        hint = QLabel(
+            "Arrows move, Space ticks, Enter opens. Ctrl + click to select several files."
+        )
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -214,7 +230,11 @@ class ExplorerPanel(QFrame):
     # Session callbacks
 
     def _on_folder_changed(self, folder) -> None:
-        self.path_label.setFullText(folder.as_posix() if folder else "No folder opened")
+        self.path_label.setFullText(
+            self.setAccessibleDescription(
+                folder.as_posix() if folder else "No folder opened"
+            )
+        )
         self._populate(folder)
 
     def _on_busy_changed(self, busy: bool) -> None:
@@ -226,9 +246,25 @@ class ExplorerPanel(QFrame):
     def _update_buttons(self) -> None:
         idle = not self.session.busy
         picked = self.session.picked_files
+        has_image = any(p.suffix.lower() in IMG_EXT for p in picked)
+
         self.order_btn.setEnabled(idle and len(picked) >= 2)
-        self.img_pdf_btn.setEnabled(
-            idle and any(p.suffix.lower() in IMG_EXT for p in picked)
+        self.img_pdf_btn.setEnabled(idle and has_image)
+
+        if not idle:
+            wait = "Please wait for the current task to finish."
+            self.order_btn.setToolTip(wait)
+            self.img_pdf_btn.setToolTip(wait)
+            return
+        self.order_btn.setToolTip(
+            "Choose the order of the ticked files (used by Merge)"
+            if len(picked) >= 2
+            else "Tick at least two files to set their order."
+        )
+        self.img_pdf_btn.setToolTip(
+            "Combine the ticked images into one PDF"
+            if has_image
+            else "Tick one or more images first."
         )
 
     def _on_choose_order(self) -> None:
@@ -390,6 +426,8 @@ class ExplorerPanel(QFrame):
             item.setCheckState(Qt.CheckState.Unchecked)
             self.list.addItem(item)
 
+        if self.list.count():
+            self.list.setCurrentRow(0)
         self.list.blockSignals(False)
 
     @staticmethod
