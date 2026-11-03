@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QFontDatabase, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -43,6 +43,20 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 APP_TITLE = "PGSL PDF Toolkit — IIT Ropar"
+
+_FONTS_LOADED = False
+
+
+def ensure_application_fonts() -> None:
+    """Register embedded fonts such as Devanagari into the global font database."""
+    global _FONTS_LOADED
+    if _FONTS_LOADED:
+        return
+    resources_dir = Path(__file__).resolve().parent.parent / "resources"
+    deva_font = resources_dir / "NotoSansDevanagari-Regular.ttf"
+    if deva_font.is_file():
+        QFontDatabase.addApplicationFont(str(deva_font))
+    _FONTS_LOADED = True
 
 
 from pdf_toolkit.core import (
@@ -84,6 +98,7 @@ class MainWindow(QMainWindow):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        ensure_application_fonts()
         self.session = session or Session(self)
 
         # Built-in or injected operations from operations registry
@@ -126,20 +141,25 @@ class MainWindow(QMainWindow):
 
         # 1. Left: Explorer Panel
         self.explorer_panel = ExplorerPanel(self.session, parent=self.splitter)
+        self.explorer_panel.setObjectName("sidePanel")
+        self.explorer_panel.setMinimumWidth(220)
         self.splitter.addWidget(self.explorer_panel)
 
         # 2. Center: Preview Panel
         self.preview_panel = PreviewPanel(self.session, parent=self.splitter)
+        self.preview_panel.setObjectName("previewContainer")
         self.splitter.addWidget(self.preview_panel)
 
         # 3. Right: Toolkit Panel
         self.toolkit_panel = Toolkit(
             self.session, operations=self.operations, parent=self.splitter
         )
+        self.toolkit_panel.setObjectName("toolkitContainer")
+        self.toolkit_panel.setMinimumWidth(330)
         self.splitter.addWidget(self.toolkit_panel)
 
-        # Proportions: Explorer ~250px, Toolkit ~280px, Preview occupies rest
-        self.splitter.setSizes([260, 740, 280])
+        # Proportions: Explorer ~250px, Toolkit ~340px, Preview occupies rest
+        self.splitter.setSizes([250, 690, 340])
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setStretchFactor(2, 0)
@@ -241,7 +261,7 @@ class MainWindow(QMainWindow):
         act_reset_layout = QAction("&Reset Panel Layout", self)
         act_reset_layout.setShortcut(QKeySequence("Ctrl+0"))
         act_reset_layout.triggered.connect(
-            lambda: self.splitter.setSizes([260, 740, 280])
+            lambda: self.splitter.setSizes([250, 690, 340])
         )
         view_menu.addAction(act_reset_layout)
 

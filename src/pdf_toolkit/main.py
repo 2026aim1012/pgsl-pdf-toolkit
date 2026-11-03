@@ -17,7 +17,7 @@ _gui_dir = str(Path(__file__).resolve().parent / "gui")
 if _gui_dir not in sys.path:
     sys.path.insert(0, _gui_dir)
 
-from pdf_toolkit.gui.main_window import MainWindow
+from pdf_toolkit.gui.main_window import MainWindow, ensure_application_fonts
 from pdf_toolkit.gui.session import Session
 
 
@@ -38,11 +38,14 @@ def main() -> None:
     app.setApplicationDisplayName("PGSL PDF Toolkit — IIT Ropar")
     app.setOrganizationName("IIT Ropar")
 
-    # Set accessible default UI font
+    # Load embedded application fonts
+    ensure_application_fonts()
+
+    # Set accessible default UI font (12pt minimum)
     font = QFont(
         "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
     )
-    font.setPointSize(10)
+    font.setPointSize(12)
     app.setFont(font)
 
     # Apply stylesheet
