@@ -66,3 +66,36 @@ def test_hindi_watermark_uses_devanagari_font():
     assert not ops._has_devanagari("hello")
     font = ops._watermark_font("गोपनीय", 40)
     assert "Devanagari" in font.getname()[0]
+
+
+def our_watermarks(path: Path) -> int:
+    """How many watermarks from this app are on page 1."""
+    with pikepdf.open(path) as pdf:
+        xobjects = pdf.pages[0].Resources.get("/XObject", {})
+        return sum(1 for _, x in xobjects.items() if x.get("/PGSLWatermark", False))
+
+
+def test_applying_twice_does_not_stack_copies(tmp_path):
+    """Bug seen in testing: each Apply drew another copy on top, so slightly
+    different copies looked smeared. Applying again now replaces the old one."""
+    src = blank_pdf(tmp_path / "in.pdf")
+    once, twice = tmp_path / "once.pdf", tmp_path / "twice.pdf"
+
+    ops.apply_watermark(src, once, None, text="iit ropar", opacity=0.3)
+    ops.apply_watermark(once, twice, None, text="iit ropar", opacity=0.3)
+
+    assert our_watermarks(once) == 1
+    assert our_watermarks(twice) == 1
+    assert covered_fraction(twice) == covered_fraction(once)  # not darker
+
+
+def test_new_text_replaces_the_old_watermark(tmp_path):
+    src = blank_pdf(tmp_path / "in.pdf")
+    first, second = tmp_path / "first.pdf", tmp_path / "second.pdf"
+
+    ops.apply_watermark(src, first, None, text="CONFIDENTIAL", rotation=45)
+    ops.apply_watermark(first, second, None, text="OK", rotation=0)
+
+    assert our_watermarks(second) == 1
+    # "OK" covers far less of the page than "CONFIDENTIAL" did
+    assert covered_fraction(second) < covered_fraction(first)

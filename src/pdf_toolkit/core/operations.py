@@ -275,6 +275,40 @@ def _create_watermark_buffer(
     return buf
 
 
+# Marks the watermarks this app adds, so applying one again can find and
+# replace the old one instead of stacking a second copy on top of it.
+_WATERMARK_MARK = pikepdf.Name("/PGSLWatermark")
+
+
+def _find_our_watermark(page: pikepdf.Page) -> pikepdf.Name | None:
+    """Name of the watermark this app put on `page` earlier, or None."""
+    resources = page.obj.get("/Resources")
+    xobjects = resources.get("/XObject") if resources is not None else None
+    if xobjects is None:
+        return None
+    for name, xobject in xobjects.items():
+        if xobject.get(_WATERMARK_MARK, False):
+            return pikepdf.Name(name)
+    return None
+
+
+def _put_watermark_on_page(
+    pdf: pikepdf.Pdf, page: pikepdf.Page, watermark_page: pikepdf.Page
+) -> None:
+    """Draw `watermark_page` over `page`. If this app already watermarked the
+    page, the old watermark is swapped for the new one, so applying a
+    watermark twice never leaves two overlapping copies."""
+    form = pdf.copy_foreign(watermark_page.as_form_xobject())
+    form[_WATERMARK_MARK] = True
+    old_name = _find_our_watermark(page)
+    if old_name is None:
+        page.add_overlay(form)
+    else:
+        # The page already draws old_name over itself, sized to the page;
+        # the new watermark has the same size, so it just takes its place.
+        page.obj.Resources.XObject[old_name] = form
+
+
 def apply_watermark(
     src: Path | str,
     out: Path | str,
@@ -314,7 +348,7 @@ def apply_watermark(
                     rotation=rotation,
                 )
                 with pikepdf.open(wm_buf) as wm_pdf:
-                    page.add_overlay(wm_pdf.pages[0])
+                    _put_watermark_on_page(pdf, page, wm_pdf.pages[0])
 
             _report(reporter, idx + 1, total, f"Watermarked page {idx + 1}/{total}")
 
