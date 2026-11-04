@@ -58,11 +58,13 @@ def main() -> None:
     # Load embedded application fonts
     ensure_application_fonts()
 
-    # Set accessible default UI font (12pt minimum)
-    font = QFont(
-        "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-    )
-    font.setPointSize(12)
+    # Default UI font: the system's own font (Segoe UI on Windows, San
+    # Francisco on macOS), sized in PIXELS. A size in points is drawn a third
+    # bigger on Windows (96 dpi) than on a Mac (72 dpi), so text that fitted
+    # its box on a Mac was cut off on Windows. Pixels look the same on both,
+    # and Windows display scaling (125%, 150%) still enlarges them.
+    font = QFont(app.font())
+    font.setPixelSize(12)
     app.setFont(font)
 
     # Apply stylesheet based on persisted theme setting

@@ -2,7 +2,7 @@
 
 QWidget {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-size: 12pt;
+    font-size: 12px;
     color: #0f172a;
     background-color: #f8fafc;
 }
@@ -25,7 +25,7 @@ QFrame#toolkitContainer, QWidget#toolkitContainer {
 
 /* Section titles */
 QLabel#sectionTitle, QLabel#toolkitTitle {
-    font-size: 13pt;
+    font-size: 13px;
     font-weight: 700;
     color: #334155;
     letter-spacing: 0.5px;
@@ -34,7 +34,7 @@ QLabel#sectionTitle, QLabel#toolkitTitle {
 
 /* Subtitles, hints, elided paths, info labels */
 QLabel#pathLabel, QLabel#hint, QLabel#pageInfo {
-    font-size: 12pt;
+    font-size: 12px;
     color: #475569;
     padding: 4px 0;
 }
@@ -46,7 +46,7 @@ QPushButton {
     border: 1px solid #94a3b8;
     border-radius: 6px;
     padding: 8px 14px;
-    font-size: 12pt;
+    font-size: 12px;
     font-weight: 500;
     color: #0f172a;
     min-height: 24px;
@@ -100,7 +100,7 @@ QPushButton#navButton {
     background-color: #ffffff;
     border: 1px solid #94a3b8;
     border-radius: 6px;
-    font-size: 12pt;
+    font-size: 12px;
     font-weight: bold;
     min-width: 36px;
     min-height: 28px;
@@ -162,7 +162,7 @@ QPushButton#cancelButton {
     border-radius: 4px;
     color: #b91c1c;
     font-weight: 600;
-    font-size: 12pt;
+    font-size: 12px;
     padding: 4px 12px;
     min-height: 20px;
 }
@@ -186,7 +186,7 @@ QPushButton#themeToggleBtn {
     background-color: #f1f5f9;
     border: 1px solid #94a3b8;
     border-radius: 6px;
-    font-size: 12pt;
+    font-size: 12px;
     font-weight: 600;
     padding: 4px 12px;
     margin-right: 8px;
@@ -215,7 +215,7 @@ QListWidget {
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     padding: 4px;
-    font-size: 12pt;
+    font-size: 12px;
 }
 
 QListWidget:focus {
@@ -304,7 +304,7 @@ QLineEdit, QSpinBox, QComboBox {
     border-radius: 6px;
     padding: 6px 8px;
     color: #0f172a;
-    font-size: 12pt;
+    font-size: 12px;
     min-height: 24px;
 }
 
@@ -325,7 +325,7 @@ QComboBox::drop-down {
 }
 
 QGroupBox {
-    font-size: 12pt;
+    font-size: 12px;
     font-weight: 600;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
@@ -339,7 +339,7 @@ QGroupBox::title {
     left: 10px;
     padding: 0 4px;
     color: #1e293b;
-    font-size: 12pt;
+    font-size: 12px;
     font-weight: 700;
 }
 
@@ -479,20 +479,20 @@ QStatusBar, QWidget#statusBarWidget {
 }
 
 QLabel#fileInfoLabel {
-    font-size: 12pt;
+    font-size: 12px;
     font-weight: 600;
     color: #0f172a;
     padding-left: 8px;
 }
 
 QLabel#statusMessageLabel {
-    font-size: 12pt;
+    font-size: 12px;
     color: #334155;
     padding-left: 8px;
 }
 
 QLabel#percentLabel {
-    font-size: 12pt;
+    font-size: 12px;
     font-weight: 600;
     color: #1d4ed8;
     min-width: 48px;
@@ -506,7 +506,7 @@ QProgressBar#statusBarProgress {
     background-color: #e2e8f0;
     height: 14px;
     max-height: 14px;
-    font-size: 12pt;
+    font-size: 12px;
 }
 
 QProgressBar#statusBarProgress::chunk {
@@ -520,7 +520,7 @@ QMenuBar {
     background-color: #ffffff;
     border-bottom: 1px solid #cbd5e1;
     padding: 3px 6px;
-    font-size: 12pt;
+    font-size: 12px;
 }
 
 QMenuBar::item {
@@ -554,7 +554,7 @@ QMenu {
     border: 1px solid #94a3b8;
     border-radius: 6px;
     padding: 4px;
-    font-size: 12pt;
+    font-size: 12px;
 }
 
 QMenu::item {
