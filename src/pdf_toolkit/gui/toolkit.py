@@ -124,9 +124,9 @@ class Toolkit(QWidget):
         # The control that had keyboard focus when a job started (see
         # _on_busy_changed); it gets focus back when the job is done.
         self._focus_to_restore: QWidget | None = None
-        # Set while an insert runs:
-        # (working file before, pages before, insert position, file name)
-        self._insert_pending: tuple[Any, int, int, str] | None = None
+        # Set while an insert runs: (working file before, pages before,
+        # 0-based insert position, file name, e.g. "after page 5")
+        self._insert_pending: tuple[Any, int, int, str, str] | None = None
 
         self._build_ui()
         self._setup_accessibility()
@@ -171,7 +171,8 @@ class Toolkit(QWidget):
         self.convert_dpi.setAccessibleDescription(
             "Choose the resolution used when rendering PDF pages as images."
         )
-        self.insert_at.setAccessibleName("Insert before page number")
+        self.insert_where.setAccessibleName("Insert before or after")
+        self.insert_at.setAccessibleName("Page number to insert at")
         self.number_start.setAccessibleName("First page number to print")
         self.number_start_page.setAccessibleName("Document page where numbering starts")
         self.watermark_opacity.setAccessibleName("Watermark opacity percentage")
@@ -188,6 +189,7 @@ class Toolkit(QWidget):
             self.delete_button,
             self.merge_button,
             self.insert_pick_button,
+            self.insert_where,
             self.insert_at,
             self.insert_button,
             self.number_position,
@@ -464,15 +466,25 @@ class Toolkit(QWidget):
         self.insert_path_label.setWordWrap(True)
         self.insert_pick_button = QPushButton("Choose PDF to insert")
         self.insert_pick_button.clicked.connect(self._choose_insert_pdf)
+        # "Before / After page" and the page number are two separate fields
+        self.insert_where = QComboBox()
+        self.insert_where.addItem("Before page", "before")
+        self.insert_where.addItem("After page", "after")
+        self.insert_where.setCurrentIndex(1)  # adding at the end is most common
         self.insert_at = QSpinBox()
         self.insert_at.setRange(1, 1)
-        self.insert_at.setPrefix("Before page ")
+        self.insert_at.setMinimumWidth(72)
+        self.insert_at.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        insert_position = QHBoxLayout()
+        insert_position.setSpacing(8)
+        insert_position.addWidget(self.insert_where, 1)
+        insert_position.addWidget(self.insert_at)
         self.insert_button = QPushButton("Insert Pages")
         self.insert_button.clicked.connect(self._insert_pages)
 
         insert_layout.addRow(self.insert_pick_button)
         insert_layout.addRow("Selected file:", self.insert_path_label)
-        insert_layout.addRow("Position:", self.insert_at)
+        insert_layout.addRow("Position:", insert_position)
         insert_layout.addRow(self.insert_button)
         self.insert_tab_layout.addWidget(insert_group)
 
@@ -610,9 +622,10 @@ class Toolkit(QWidget):
         self.convert_dpi.setToolTip(
             "Set the image resolution in dots per inch (DPI). Higher values create larger images."
         )
-        self.insert_at.setToolTip(
-            "Choose the page number before which the selected PDF will be inserted."
+        self.insert_where.setToolTip(
+            "Put the new pages before or after the page number on the right."
         )
+        self.insert_at.setToolTip("The page the new pages go before or after.")
         self.number_position.setToolTip(
             "Choose where page numbers appear on each page."
         )
@@ -676,7 +689,11 @@ class Toolkit(QWidget):
 
     def _on_page_count_changed(self, count: int) -> None:
         """Receive page count from Session."""
+        newly_opened = self.page_count == 0 and count > 0
         self.page_count = count
+        if newly_opened:
+            self.insert_at.setMaximum(count)
+            self.insert_at.setValue(count)  # "After page <last>" by default
         self._update_page_info()
         self._refresh_ui()
 
@@ -708,7 +725,7 @@ class Toolkit(QWidget):
 
     def _report_insert(self) -> None:
         """Say how many pages were inserted and jump to the first of them."""
-        old_file, before, at, name = self._insert_pending
+        old_file, before, at, name, place = self._insert_pending
         self._insert_pending = None
         # Only if this new document really is the insert's result (and not,
         # say, another file opened after the insert was cancelled)
@@ -720,7 +737,7 @@ class Toolkit(QWidget):
             return
         pages = "1 page" if added == 1 else f"{added} pages"
         self.requestStatus.emit(
-            f"Inserted {pages} from {name} before page {at + 1} "
+            f"Inserted {pages} from {name} {place} "
             f"(now {self.session.page_count} pages)."
         )
         # A moment later, after every panel has loaded the new file
@@ -844,6 +861,7 @@ class Toolkit(QWidget):
         )
         self.insert_pick_button.setEnabled(not busy)
         self.insert_at.setEnabled(has_document and not busy)
+        self.insert_where.setEnabled(has_document and not busy)
         self.insert_button.setEnabled(
             has_document
             and not busy
@@ -853,7 +871,7 @@ class Toolkit(QWidget):
         self.number_button.setEnabled(
             has_document and not busy and self._has_operation("page_numbers")
         )
-        self.insert_at.setMaximum(max(1, self.page_count + 1))
+        self.insert_at.setMaximum(max(1, self.page_count))
         self.number_start_page.setMaximum(max(1, self.page_count))
 
         # Undo has its own Session signal, but busy still takes precedence.
@@ -1047,7 +1065,7 @@ class Toolkit(QWidget):
         self._refresh_ui()
 
     def _insert_pages(self) -> None:
-        """Insert pages from the chosen PDF before the selected page."""
+        """Insert pages from the chosen PDF before or after the chosen page."""
         operation = self.operations.get("insert")
         raw_path = self.insert_path_label.property("insert_path")
         if not callable(operation) or not raw_path:
@@ -1056,17 +1074,22 @@ class Toolkit(QWidget):
         if not insert_path.is_file():
             self._show_warning("Insert Pages", "The selected PDF no longer exists.")
             return
-        # The UI is 1-based; the page operation contract uses zero-based indices.
-        at = self.insert_at.value() - 1
+        # The UI counts pages from 1; the engine wants the 0-based position
+        # the first new page will have: before page n = n - 1, after page n = n.
+        page = self.insert_at.value()
+        where = self.insert_where.currentData()
+        at = page - 1 if where == "before" else page
+        place = f"{where} page {page}"
         self._insert_pending = (
             self.session.current,
             self.session.page_count,
             at,
             insert_path.name,
+            place,
         )
         started = self.session.apply(
             operation,
-            description=f"Inserting pages before page {self.insert_at.value()}...",
+            description=f"Inserting pages {place}...",
             insert_path=insert_path,
             at=at,
         )

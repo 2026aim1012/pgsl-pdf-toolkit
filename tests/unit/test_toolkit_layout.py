@@ -133,3 +133,47 @@ def test_scroll_stays_put_when_a_job_starts(qapp, monkeypatch):
 
     toolkit.close()
     session.cleanup()
+
+
+def test_insert_position_before_or_after(qapp, tmp_path, monkeypatch):
+    """Position = a Before/After choice plus a separate page-number box."""
+    import pikepdf
+
+    session, toolkit = make_toolkit()
+    extra = tmp_path / "extra.pdf"
+    pdf = pikepdf.new()
+    pdf.add_blank_page()
+    pdf.save(extra)
+
+    calls = []
+    monkeypatch.setattr(session, "apply", lambda op, **kw: calls.append(kw) or True)
+    toolkit.operations = {"insert": lambda *a, **k: None}
+    toolkit.insert_path_label.setProperty("insert_path", str(extra))
+    toolkit.insert_at.setMaximum(8)
+    toolkit.insert_at.setValue(5)
+
+    assert toolkit.insert_where is not toolkit.insert_at  # two fields
+    assert toolkit.insert_at.prefix() == ""  # just the number
+
+    toolkit.insert_where.setCurrentIndex(toolkit.insert_where.findData("after"))
+    toolkit._insert_pages()
+    assert calls[-1]["at"] == 5  # new pages start right after page 5
+    assert "after page 5" in calls[-1]["description"]
+
+    toolkit.insert_where.setCurrentIndex(toolkit.insert_where.findData("before"))
+    toolkit._insert_pages()
+    assert calls[-1]["at"] == 4  # new pages start where page 5 was
+    assert "before page 5" in calls[-1]["description"]
+
+    session.cleanup()
+
+
+def test_new_pdf_defaults_to_after_the_last_page(qapp):
+    session, toolkit = make_toolkit()
+
+    toolkit._on_page_count_changed(8)  # a PDF with 8 pages was opened
+
+    assert toolkit.insert_where.currentData() == "after"
+    assert toolkit.insert_at.value() == 8
+    assert toolkit.insert_at.maximum() == 8
+    session.cleanup()

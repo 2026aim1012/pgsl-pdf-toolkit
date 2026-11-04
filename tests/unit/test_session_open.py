@@ -94,7 +94,7 @@ def test_insert_reports_what_it_did(qapp, tmp_path):
     extra = make_pdf(tmp_path / "ABC.pdf", 3)
     assert session.open(doc)
 
-    toolkit._insert_pending = (session.current, 8, 2, "ABC.pdf")
+    toolkit._insert_pending = (session.current, 8, 2, "ABC.pdf", "before page 3")
     out = session._new_temp(".pdf")
     insert_pages(session.current, out, None, insert_path=extra, at=2)
     session._applied(out, keep_page=True)  # the Toolkit hears documentChanged
