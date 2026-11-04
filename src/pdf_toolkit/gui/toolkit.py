@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -47,7 +48,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QSpinBox,
-    QTabWidget,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -115,29 +116,6 @@ class Toolkit(QWidget):
     # UI construction
     # ------------------------------------------------------------------
 
-    def _make_section(self, title: str) -> tuple[QGroupBox, QVBoxLayout]:
-        """Create a checkable section whose contents can be folded away."""
-        section = QGroupBox(title)
-        section.setCheckable(True)
-        section.setChecked(True)
-        section.setToolTip(f"Show or hide the {title.lower()} tools.")
-        layout = QVBoxLayout(section)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
-
-        def set_expanded(expanded: bool, box: QGroupBox = section) -> None:
-            child_layout = box.layout()
-            if child_layout is None:
-                return
-            for index in range(child_layout.count()):
-                item = child_layout.itemAt(index)
-                widget = item.widget()
-                if widget is not None:
-                    widget.setVisible(expanded)
-
-        section.toggled.connect(set_expanded)
-        return section, layout
-
     def _setup_accessibility(self) -> None:
         """Add tooltips, accessible names, and a predictable tab sequence."""
         # Give every visible widget a useful tooltip, including labels and
@@ -171,6 +149,7 @@ class Toolkit(QWidget):
         # Controls in visual top-to-bottom order. setTabOrder() establishes
         # an explicit chain instead of relying on widget construction order.
         order = [
+            self.category_combo, self.pages_combo,
             self.scope_combo, self.rotate_angle, self.rotate_button,
             self.reverse_button, self.delete_button, self.merge_button,
             self.insert_pick_button, self.insert_at, self.insert_button,
@@ -196,56 +175,79 @@ class Toolkit(QWidget):
         title.setStyleSheet("font-size: 18px; font-weight: bold; padding-bottom: 4px;")
         root.addWidget(title)
 
-        # Use tabs instead of a single tall, scrollable list. The Pages
-        # category has its own compact sub-tabs because it contains the
-        # largest number of controls.
-        self.category_tabs = QTabWidget()
-        self.category_tabs.setDocumentMode(True)
-        root.addWidget(self.category_tabs, 1)
+        # Combo-box navigation avoids QTabBar's horizontal scroll buttons
+        # when the toolkit is hosted in a narrow right-hand panel.
+        nav_label = QLabel("Tool category")
+        root.addWidget(nav_label)
+        self.category_combo = QComboBox()
+        self.category_combo.addItems(["Pages", "Optimise", "Convert", "Stamp", "Text"])
+        self.category_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.category_combo.setMinimumContentsLength(8)
+        self.category_combo.setToolTip("Choose which group of PDF tools to display.")
+        root.addWidget(self.category_combo)
+
+        self.category_stack = QStackedWidget()
+        root.addWidget(self.category_stack, 1)
 
         self.pages_section = QWidget()
         pages_root = QVBoxLayout(self.pages_section)
-        pages_root.setContentsMargins(4, 4, 4, 4)
-        pages_root.setSpacing(6)
+        pages_root.setContentsMargins(2, 2, 2, 2)
+        pages_root.setSpacing(5)
 
-        self.pages_tabs = QTabWidget()
-        self.pages_tabs.setDocumentMode(True)
-        pages_root.addWidget(self.pages_tabs)
+        pages_nav_label = QLabel("Pages tools")
+        pages_root.addWidget(pages_nav_label)
+        self.pages_combo = QComboBox()
+        self.pages_combo.addItems(["Arrange & edit", "Insert", "Page numbers", "History"])
+        self.pages_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.pages_combo.setMinimumContentsLength(10)
+        self.pages_combo.setToolTip("Choose the page-related task to display.")
+        pages_root.addWidget(self.pages_combo)
+
+        self.pages_stack = QStackedWidget()
+        pages_root.addWidget(self.pages_stack, 1)
 
         pages_arrange = QWidget()
-        self.pages_layout = QVBoxLayout(pages_arrange)
+        self.pages_layout = QGridLayout(pages_arrange)
         self.pages_layout.setContentsMargins(2, 2, 2, 2)
-        self.pages_layout.setSpacing(6)
-        self.pages_tabs.addTab(pages_arrange, "Arrange & edit")
+        self.pages_layout.setHorizontalSpacing(6)
+        self.pages_layout.setVerticalSpacing(6)
+        self.pages_layout.setColumnStretch(0, 1)
+        self.pages_layout.setColumnStretch(1, 1)
+        self.pages_stack.addWidget(pages_arrange)
 
         pages_insert = QWidget()
         self.insert_tab_layout = QVBoxLayout(pages_insert)
         self.insert_tab_layout.setContentsMargins(2, 2, 2, 2)
         self.insert_tab_layout.setSpacing(6)
-        self.pages_tabs.addTab(pages_insert, "Insert")
+        self.pages_stack.addWidget(pages_insert)
 
         pages_numbers = QWidget()
         self.numbers_tab_layout = QVBoxLayout(pages_numbers)
         self.numbers_tab_layout.setContentsMargins(2, 2, 2, 2)
         self.numbers_tab_layout.setSpacing(6)
-        self.pages_tabs.addTab(pages_numbers, "Page numbers")
+        self.pages_stack.addWidget(pages_numbers)
 
         pages_history = QWidget()
         self.history_tab_layout = QVBoxLayout(pages_history)
         self.history_tab_layout.setContentsMargins(2, 2, 2, 2)
         self.history_tab_layout.setSpacing(6)
-        self.pages_tabs.addTab(pages_history, "History")
+        self.pages_stack.addWidget(pages_history)
 
-        self.optimise_section, self.optimise_layout = self._make_section("Optimise")
-        self.convert_section, self.convert_layout = self._make_section("Convert")
-        self.stamp_section, self.stamp_layout = self._make_section("Stamp")
-        self.text_section, self.text_layout = self._make_section("Text")
+        self.optimise_section = QWidget()
+        self.optimise_layout = QVBoxLayout(self.optimise_section)
+        self.convert_section = QWidget()
+        self.convert_layout = QVBoxLayout(self.convert_section)
+        self.stamp_section = QWidget()
+        self.stamp_layout = QVBoxLayout(self.stamp_section)
+        self.text_section = QWidget()
+        self.text_layout = QVBoxLayout(self.text_section)
 
-        self.category_tabs.addTab(self.pages_section, "Pages")
-        self.category_tabs.addTab(self.optimise_section, "Optimise")
-        self.category_tabs.addTab(self.convert_section, "Convert")
-        self.category_tabs.addTab(self.stamp_section, "Stamp")
-        self.category_tabs.addTab(self.text_section, "Text")
+        for page in (self.pages_section, self.optimise_section, self.convert_section,
+                     self.stamp_section, self.text_section):
+            self.category_stack.addWidget(page)
+
+        self.category_combo.currentIndexChanged.connect(self.category_stack.setCurrentIndex)
+        self.pages_combo.currentIndexChanged.connect(self.pages_stack.setCurrentIndex)
 
         # --------------------------------------------------------------
         # Page scope
@@ -272,7 +274,7 @@ class Toolkit(QWidget):
 
         scope_layout.addRow(self.page_info_label)
 
-        self.pages_layout.addWidget(scope_group)
+        self.pages_layout.addWidget(scope_group, 0, 0)
 
         # --------------------------------------------------------------
         # Rotate
@@ -295,7 +297,7 @@ class Toolkit(QWidget):
         rotate_controls.addWidget(self.rotate_button)
 
         rotate_layout.addLayout(rotate_controls)
-        self.pages_layout.addWidget(rotate_group)
+        self.pages_layout.addWidget(rotate_group, 0, 1)
 
         # --------------------------------------------------------------
         # Reverse
@@ -304,12 +306,12 @@ class Toolkit(QWidget):
         reverse_group = QGroupBox("Page Order")
         reverse_layout = QVBoxLayout(reverse_group)
 
-        self.reverse_button = QPushButton("Reverse Page Order")
+        self.reverse_button = QPushButton("Reverse Order")
         self.reverse_button.clicked.connect(self._reverse)
 
         reverse_layout.addWidget(self.reverse_button)
 
-        self.pages_layout.addWidget(reverse_group)
+        self.pages_layout.addWidget(reverse_group, 1, 0)
 
         # --------------------------------------------------------------
         # Delete
@@ -321,13 +323,13 @@ class Toolkit(QWidget):
         delete_hint = QLabel("Delete the pages selected in the preview.")
         delete_hint.setWordWrap(True)
 
-        self.delete_button = QPushButton("Delete Selected Pages")
+        self.delete_button = QPushButton("Delete Selected")
         self.delete_button.clicked.connect(self._delete)
 
         delete_layout.addWidget(delete_hint)
         delete_layout.addWidget(self.delete_button)
 
-        self.pages_layout.addWidget(delete_group)
+        self.pages_layout.addWidget(delete_group, 1, 1)
 
         # --------------------------------------------------------------
         # Merge
@@ -341,13 +343,13 @@ class Toolkit(QWidget):
         )
         self.merge_info_label.setWordWrap(True)
 
-        self.merge_button = QPushButton("Merge Picked PDFs")
+        self.merge_button = QPushButton("Merge PDFs")
         self.merge_button.clicked.connect(self._merge)
 
         merge_layout.addWidget(self.merge_info_label)
         merge_layout.addWidget(self.merge_button)
 
-        self.pages_layout.addWidget(merge_group)
+        self.pages_layout.addWidget(merge_group, 2, 0, 1, 2)
 
         # --------------------------------------------------------------
         # Compress
@@ -542,8 +544,8 @@ class Toolkit(QWidget):
         self.history_tab_layout.addWidget(undo_group)
 
         for page_layout in (
-            self.pages_layout, self.insert_tab_layout,
-            self.numbers_tab_layout, self.history_tab_layout,
+            self.insert_tab_layout, self.numbers_tab_layout, self.history_tab_layout,
+            self.optimise_layout, self.convert_layout, self.stamp_layout, self.text_layout,
         ):
             page_layout.addStretch(1)
 
