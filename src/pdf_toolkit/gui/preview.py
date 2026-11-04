@@ -455,9 +455,15 @@ class PreviewPanel(QWidget):
     def _set_page_count(self, count: int):
         """Update '/ 391' and the highest number the page box accepts."""
         self.page_box.blockSignals(True)  # don't trigger set_page here
-        self.page_box.setRange(1, max(1, count))
+        if count == 0:
+            # Nothing open: show a dash, not a page "0" that doesn't exist
+            self.page_box.setRange(0, 0)
+            self.page_box.setSpecialValueText("\u2013")
+        else:
+            self.page_box.setSpecialValueText("")
+            self.page_box.setRange(1, count)
         self.page_box.blockSignals(False)
-        self.total_label.setText(f"/ {count}")
+        self.total_label.setText(f"/ {count}" if count else "/ \u2013")
         self.total_label.setAccessibleName(f"of {count} pages")
 
     def show_page(self, index: int):
@@ -558,7 +564,7 @@ class PreviewPanel(QWidget):
         self.page_label.clear()
         self.page_label.setText(text)
         self.page_label.setAccessibleDescription(text.replace("\n", ". "))
-        self.total_label.setText("/ 0")
+        self._set_page_count(0)  # shows "– / –" instead of "0 / 0"
         self.thumbs.clear()
         for widget in (self.prev_btn, self.next_btn, self.page_box):
             widget.setEnabled(False)

@@ -58,6 +58,18 @@ Keep the `.exe` inside its folder: it needs the `_internal` folder next to it.
    ./pgsl-pdf-toolkit/pgsl-pdf-toolkit
    ```
 
+## Finding your way around
+
+The window has three parts:
+
+- **Explorer** (left): click **Open folder…**, then click a PDF to open it.
+- **Preview** (middle): the open page, with all pages as small pictures
+  underneath. Drag a picture to move that page.
+- **PDF Toolkit** (right): five big buttons choose a group of tools
+  (Pages, Compress, Convert, Stamp, Text). **Undo** is always at the bottom.
+
+Nothing is changed in your original file until you choose **File → Save**.
+
 ## Using it with the keyboard
 
 Everything works without a mouse. Press **F1** in the app for the full list.
@@ -75,6 +87,8 @@ On a Mac, use **⌘ Cmd** wherever this says Ctrl.
 | Ctrl+S / Ctrl+Shift+S | Save / Save As |
 | Esc | Cancel a running task |
 | F8 / F9 | Show or hide the Explorer / Toolkit |
+| Ctrl+D | Switch between light and dark mode |
+| F1 | Show all keyboard shortcuts |
 
 Screen readers (VoiceOver on macOS, Narrator on Windows) read out every
 button and each page thumbnail.

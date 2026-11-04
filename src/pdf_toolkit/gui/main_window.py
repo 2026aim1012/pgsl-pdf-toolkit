@@ -21,12 +21,11 @@ from pdf_toolkit.platform_compat import init_platform
 
 init_platform()
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSettings, QSize, Qt
+from PySide6.QtCore import QPoint, QSettings, QSize, Qt
 from PySide6.QtGui import (
     QAction,
     QFontDatabase,
     QIcon,
-    QKeyEvent,
     QKeySequence,
     QShortcut,
 )
@@ -35,7 +34,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLineEdit,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -174,7 +172,6 @@ class MainWindow(QMainWindow):
     def _setup_window(self) -> None:
         self.setWindowTitle(APP_TITLE)
         self.setMinimumSize(960, 540)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
 
         # Restore window geometry (size & position) from QSettings
         self._restore_window_geometry()
@@ -188,7 +185,6 @@ class MainWindow(QMainWindow):
 
     def _build_layout(self) -> None:
         central_container = QWidget(self)
-        central_container.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self.setCentralWidget(central_container)
 
         root_layout = QVBoxLayout(central_container)
@@ -237,7 +233,9 @@ class MainWindow(QMainWindow):
 
     def _create_menus(self) -> None:
         menubar = self.menuBar()
-        menubar.setNativeMenuBar(False)
+        # macOS: menus live in the bar at the top of the screen, like every
+        # other Mac app. Windows/Linux: the usual menu bar inside the window.
+        menubar.setNativeMenuBar(sys.platform == "darwin")
 
         # ── File Menu ──
         file_menu = menubar.addMenu("&File")
@@ -366,15 +364,10 @@ class MainWindow(QMainWindow):
         self.act_about.triggered.connect(self._show_about_dialog)
         help_menu.addAction(self.act_about)
 
-        # Store app menus and ensure only one menu is ever shown at a time
+        # Qt opens and closes these menus itself. Hiding them by hand (as an
+        # earlier version did) confused the menu bar and left menus stuck on
+        # the screen, so nothing here touches them.
         self._app_menus = [file_menu, edit_menu, view_menu, help_menu]
-        for m in self._app_menus:
-            m.aboutToShow.connect(
-                lambda current=m: [
-                    other.hide() for other in self._app_menus if other is not current
-                ]
-            )
-            m.installEventFilter(self)
 
         # ── Corner Widget: Dark/Light Mode Switch Button ──
         self.theme_btn = QPushButton("Dark Mode", self)
@@ -384,11 +377,18 @@ class MainWindow(QMainWindow):
         self.theme_btn.setToolTip("Switch to dark appearance (Ctrl+D)")
         self.theme_btn.setAccessibleName("Toggle light or dark appearance")
         self.theme_btn.clicked.connect(self.toggle_theme)
-        menubar.setCornerWidget(self.theme_btn, Qt.Corner.TopRightCorner)
+        if menubar.isNativeMenuBar():
+            # The Mac menu bar has no room for buttons: put it in the status
+            # bar, made a little taller so the button fits without clipping
+            self.status_bar_widget.setFixedHeight(46)
+            self.status_bar_widget.layout().addWidget(self.theme_btn)
+        else:
+            menubar.setCornerWidget(self.theme_btn, Qt.Corner.TopRightCorner)
 
     # ── Session Connections ──────────────────────────────────────────
 
     def _connect_session(self) -> None:
+        self.toolkit_panel.requestStatus.connect(self.session.statusMessage.emit)
         self.session.documentChanged.connect(self._on_document_changed)
         self.session.modifiedChanged.connect(self._on_modified_changed)
         self.session.undoAvailable.connect(self.act_undo.setEnabled)
@@ -509,6 +509,8 @@ class MainWindow(QMainWindow):
             "<tr><td><b>Ctrl + Z</b></td><td>Undo last operation</td></tr>"
             "<tr><td><b>Left / Right</b></td><td>Previous / Next page</td></tr>"
             "<tr><td><b>Page Up / Down</b></td><td>Previous / Next page</td></tr>"
+            "<tr><td><b>Ctrl + Shift + Left / Right</b></td>"
+            "<td>Move the selected pages (in the thumbnails)</td></tr>"
             "<tr><td><b>Tab / Shift + Tab</b></td><td>Move focus between controls</td></tr>"
             "<tr><td><b>Space</b></td><td>Toggle selection / Activate focused button</td></tr>"
             "<tr><td><b>Enter</b></td><td>Open selected file in Explorer</td></tr>"
@@ -520,6 +522,8 @@ class MainWindow(QMainWindow):
             "<tr><td><b>F1</b></td><td>Show this keyboard shortcuts guide</td></tr>"
             "</table>"
         )
+        if sys.platform == "darwin":
+            msg += "<p>On a Mac, use <b>⌘ Cmd</b> wherever this says Ctrl.</p>"
         QMessageBox.information(self, "Keyboard Shortcuts", msg)
 
     def _show_about_dialog(self) -> None:
@@ -529,7 +533,7 @@ class MainWindow(QMainWindow):
             "<p>Developed for IIT Ropar Store & Purchase and Student Affairs sections.</p>"
             "<p>A safe, fully offline desktop application for PDF manipulation:</p>"
             "<ul>"
-            "<li>Merge, split, reorder, rotate and delete pages</li>"
+            "<li>Merge, reorder, rotate, insert and delete pages</li>"
             "<li>Image &lt;-&gt; PDF conversions</li>"
             "<li>Lossless & lossy PDF compression</li>"
             "<li>Bilingual Latin & Devanagari page numbering</li>"
@@ -543,56 +547,20 @@ class MainWindow(QMainWindow):
     # ── Lifecycle ────────────────────────────────────────────────────
 
     def _setup_ui_interactions(self) -> None:
-        """Configure button focus policies for clean mouse and keyboard behavior."""
+        """Configure button focus policies for clean mouse and keyboard behavior.
+
+        Windows/Linux: TabFocus = reachable with Tab, but a mouse click does
+        not leave a focus ring behind. macOS skips TabFocus-only buttons when
+        tabbing (unless a hidden system setting is on), which would make the
+        buttons unreachable without a mouse, so there they get StrongFocus.
+        """
+        policy = (
+            Qt.FocusPolicy.StrongFocus
+            if sys.platform == "darwin"
+            else Qt.FocusPolicy.TabFocus
+        )
         for btn in self.findChildren(QPushButton):
-            btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-
-    def _close_all_menus(self) -> None:
-        """Properly dismiss all open menus and reset menubar popup state."""
-        app = QApplication.instance()
-        if hasattr(self, "_app_menus"):
-            for m in self._app_menus:
-                if m.isVisible():
-                    esc_ev = QKeyEvent(
-                        QEvent.Type.KeyPress,
-                        Qt.Key.Key_Escape,
-                        Qt.KeyboardModifier.NoModifier,
-                    )
-                    if app:
-                        app.sendEvent(m, esc_ev)
-                    if m.isVisible():
-                        m.hide()
-
-        mb = self.menuBar()
-        if mb and app:
-            app.sendEvent(mb, QEvent(QEvent.Type.Leave))
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        """Close open menu when mouse moves completely out of menu and menubar range."""
-        if (
-            isinstance(watched, QMenu)
-            and hasattr(self, "_app_menus")
-            and watched in self._app_menus
-            and event.type() == QEvent.Type.MouseMove
-        ):
-            pos = event.globalPosition().toPoint()
-            m_rect = QRect(watched.mapToGlobal(QPoint(0, 0)), watched.size())
-            mb = self.menuBar()
-            mb_rect = QRect(mb.mapToGlobal(QPoint(0, 0)), mb.size()) if mb else QRect()
-            in_menu_zone = (
-                m_rect.contains(pos)
-                or mb_rect.contains(pos)
-                or any(
-                    other.isVisible()
-                    and QRect(other.mapToGlobal(QPoint(0, 0)), other.size()).contains(
-                        pos
-                    )
-                    for other in self._app_menus
-                )
-            )
-            if not in_menu_zone:
-                self._close_all_menus()
-        return super().eventFilter(watched, event)
+            btn.setFocusPolicy(policy)
 
     def mousePressEvent(self, event: Any) -> None:
         """Clicking somewhere empty in the window reverts all active UI states."""
@@ -600,9 +568,7 @@ class MainWindow(QMainWindow):
         super().mousePressEvent(event)
 
     def _revert_ui_state(self) -> None:
-        """Clear keyboard focus and close any open menus."""
-        self._close_all_menus()
-
+        """Clear keyboard focus when clicking an empty part of the window."""
         app = QApplication.instance()
         if app:
             focused = app.focusWidget()

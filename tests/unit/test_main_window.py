@@ -294,13 +294,21 @@ def test_ui_interaction_and_focus_revert(qapp):
     window.theme_btn.click()
     assert not window.theme_btn.hasFocus()
 
-    # 3. All buttons should have TabFocus policy (keyboard navigation works, mouse click doesn't stick)
+    # 3. Every button is reachable with Tab. macOS skips TabFocus-only
+    #    buttons, so there they use StrongFocus.
+    import sys
+
+    expected = (
+        Qt.FocusPolicy.StrongFocus
+        if sys.platform == "darwin"
+        else Qt.FocusPolicy.TabFocus
+    )
     buttons = window.findChildren(QPushButton)
     assert len(buttons) >= 15
     for btn in buttons:
-        assert btn.focusPolicy() == Qt.FocusPolicy.TabFocus
+        assert btn.focusPolicy() == expected
 
-    # 4. Menubar actions exist and top menus are managed
+    # 4. Menubar actions exist; Qt itself opens and closes the menus
     assert window.menuBar() is not None
     assert len(window.menuBar().actions()) >= 4
     assert hasattr(window, "_app_menus")
@@ -308,16 +316,8 @@ def test_ui_interaction_and_focus_revert(qapp):
     for menu in window._app_menus:
         assert menu.parent() is window.menuBar()
 
-    # 5. Opening one menu closes any previously open menu
-    m0, m1 = window._app_menus[0], window._app_menus[1]
-    m0.show()
-    assert m0.isVisible()
-    m1.aboutToShow.emit()
-    assert not m0.isVisible()
-
-    # 6. Clicking empty area in window reverts active UI state and closes open menus
-    m1.show()
-    assert m1.isVisible()
+    # 5. Clicking an empty part of the window clears keyboard focus
+    window.theme_btn.setFocus()
     press_ev = QMouseEvent(
         QEvent.Type.MouseButtonPress,
         QPointF(window.rect().center()),
@@ -326,7 +326,7 @@ def test_ui_interaction_and_focus_revert(qapp):
         Qt.KeyboardModifier.NoModifier,
     )
     window.mousePressEvent(press_ev)
-    assert not m1.isVisible()
+    assert not window.theme_btn.hasFocus()
 
     # 7. Smooth preview scaling label is active
     assert isinstance(window.preview_panel.page_label, SmoothPageLabel)

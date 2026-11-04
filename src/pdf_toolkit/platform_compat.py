@@ -24,5 +24,7 @@ def init_platform() -> None:
             except OSError:
                 pass
 
+        # Default to xcb when a display exists, but never override a setting
+        # the user (or the test suite, which uses "offscreen") already chose.
         if os.environ.get("DISPLAY"):
-            os.environ["QT_QPA_PLATFORM"] = "xcb"
+            os.environ.setdefault("QT_QPA_PLATFORM", "xcb")

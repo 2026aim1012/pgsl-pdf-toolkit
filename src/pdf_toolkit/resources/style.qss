@@ -577,3 +577,24 @@ QMenu::separator {
     background-color: #cbd5e1;
     margin: 4px 0;
 }
+
+/* ── Toolkit: category buttons and "how to start" hint ───────────── */
+
+QPushButton#categoryButton {
+    padding: 6px 4px;
+    font-weight: 600;
+}
+
+QPushButton#categoryButton:checked {
+    background-color: #1d4ed8;
+    border: 1px solid #1e40af;
+    color: #ffffff;
+}
+
+QLabel#startHint {
+    background-color: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    color: #1e3a8a;
+    padding: 10px;
+}
