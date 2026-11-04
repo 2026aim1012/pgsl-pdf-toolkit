@@ -216,6 +216,11 @@ class Session(QObject):
         self.worker: WorkerThread | None = None
         self._on_done: Callable[[Any], None] | None = None
 
+        # Asked before opening another file throws away unsaved changes.
+        # The main window sets it to a "Save / Discard / Cancel" dialog; it
+        # returns True to go ahead. None (e.g. in tests) means "go ahead".
+        self.confirm_discard: Callable[[], bool] | None = None
+
     # ── Properties ───────────────────────────────────────────────────
 
     @property
@@ -295,6 +300,25 @@ class Session(QObject):
         path = Path(path)
         if not path.is_file():
             self.errorMessage.emit(f"File not found: {path}")
+            return False
+
+        # The same file again (e.g. double-clicked in the Explorer): keep it
+        # as it is. Re-reading it from disk would silently throw away every
+        # change made since it was opened, and the Undo history with it.
+        if (
+            self.has_document
+            and self.source is not None
+            and path.resolve() == self.source.resolve()
+        ):
+            self.statusMessage.emit(f"{path.name} is already open")
+            return True
+
+        # A different file while there are unsaved changes: ask first.
+        if (
+            self.modified
+            and self.confirm_discard is not None
+            and not self.confirm_discard()
+        ):
             return False
 
         work_copy = self._new_temp(path.suffix or ".pdf")

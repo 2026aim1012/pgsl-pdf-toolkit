@@ -36,7 +36,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSettings, Qt, Signal
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -124,6 +124,9 @@ class Toolkit(QWidget):
         # The control that had keyboard focus when a job started (see
         # _on_busy_changed); it gets focus back when the job is done.
         self._focus_to_restore: QWidget | None = None
+        # Set while an insert runs:
+        # (working file before, pages before, insert position, file name)
+        self._insert_pending: tuple[Any, int, int, str] | None = None
 
         self._build_ui()
         self._setup_accessibility()
@@ -678,7 +681,9 @@ class Toolkit(QWidget):
         self._refresh_ui()
 
     def _on_document_changed(self, path: Path | None) -> None:
-        """Update before/after size feedback when compression completes."""
+        """Feedback after an insert or a compression finishes."""
+        if self._insert_pending is not None and path is not None:
+            self._report_insert()
         if not self._compression_pending:
             return
         self._compression_pending = False
@@ -701,8 +706,29 @@ class Toolkit(QWidget):
                 "Compression did not reduce the file size; the original size was retained."
             )
 
+    def _report_insert(self) -> None:
+        """Say how many pages were inserted and jump to the first of them."""
+        old_file, before, at, name = self._insert_pending
+        self._insert_pending = None
+        # Only if this new document really is the insert's result (and not,
+        # say, another file opened after the insert was cancelled)
+        undo_stack = getattr(self.session, "undo_stack", [])
+        if not undo_stack or undo_stack[-1] != old_file:
+            return
+        added = self.session.page_count - before
+        if added <= 0:
+            return
+        pages = "1 page" if added == 1 else f"{added} pages"
+        self.requestStatus.emit(
+            f"Inserted {pages} from {name} before page {at + 1} "
+            f"(now {self.session.page_count} pages)."
+        )
+        # A moment later, after every panel has loaded the new file
+        QTimer.singleShot(0, lambda: self.session.set_page(at))
+
     def _on_operation_error(self, message: str) -> None:
         """Show a short, plain-language explanation when an operation fails."""
+        self._insert_pending = None
         if self._compression_pending:
             self._compression_pending = False
             self.compress_size_label.setText("Compression did not finish.")
@@ -1032,12 +1058,20 @@ class Toolkit(QWidget):
             return
         # The UI is 1-based; the page operation contract uses zero-based indices.
         at = self.insert_at.value() - 1
-        self.session.apply(
+        self._insert_pending = (
+            self.session.current,
+            self.session.page_count,
+            at,
+            insert_path.name,
+        )
+        started = self.session.apply(
             operation,
             description=f"Inserting pages before page {self.insert_at.value()}...",
             insert_path=insert_path,
             at=at,
         )
+        if not started:
+            self._insert_pending = None
 
     def _page_numbers(self) -> None:
         """Apply page numbers with the chosen placement and numeral system."""

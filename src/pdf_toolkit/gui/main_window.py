@@ -166,6 +166,8 @@ class MainWindow(QMainWindow):
         self.set_dark_mode(saved_dark)
         self._connect_session()
         self._update_window_title()
+        # Ask before opening another file would throw away unsaved changes
+        self.session.confirm_discard = self._confirm_discard_changes
 
     # ── Window Setup ─────────────────────────────────────────────────
 
@@ -468,6 +470,27 @@ class MainWindow(QMainWindow):
         )
         if dest:
             self.session.save_as(dest)
+
+    def _confirm_discard_changes(self) -> bool:
+        """Before another file replaces the open one: Save, Discard or Cancel.
+        Returns True when it is fine to go ahead."""
+        name = self.session.source.name if self.session.source else "This document"
+        reply = QMessageBox.question(
+            self,
+            "Unsaved Changes",
+            f"{name} has changes that are not saved yet.\n"
+            "Do you want to save them before opening another file?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if reply == QMessageBox.StandardButton.Cancel:
+            return False
+        if reply == QMessageBox.StandardButton.Save:
+            self._on_save()
+            return not self.session.modified  # only go ahead if it was saved
+        return True
 
     def _on_close_document(self) -> None:
         if not self.session.has_document:
