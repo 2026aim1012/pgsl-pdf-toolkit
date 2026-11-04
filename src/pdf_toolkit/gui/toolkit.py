@@ -38,6 +38,7 @@ from typing import Any
 
 from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QFileDialog,
@@ -120,6 +121,9 @@ class Toolkit(QWidget):
         self.selected_pages: list[int] = []
         self._compression_before_size: int | None = None
         self._compression_pending = False
+        # The control that had keyboard focus when a job started (see
+        # _on_busy_changed); it gets focus back when the job is done.
+        self._focus_to_restore: QWidget | None = None
 
         self._build_ui()
         self._setup_accessibility()
@@ -642,8 +646,26 @@ class Toolkit(QWidget):
     # ------------------------------------------------------------------
 
     def _on_busy_changed(self, busy: bool) -> None:
-        """Enable/disable controls while a background operation runs."""
+        """Enable/disable controls while a background operation runs.
+
+        If the focused control (say the Rotate button just clicked) is about
+        to be greyed out, Qt would move focus to the next control and the
+        scroll area would jump to show it, often all the way to the bottom.
+        So focus is parked on the chosen category button at the top (outside
+        the scroll area) during the job, then handed back afterwards.
+        """
+        if busy:
+            focused = QApplication.focusWidget()
+            if focused is not None and self.isAncestorOf(focused):
+                self._focus_to_restore = focused
+                parking = self.category_group.checkedButton()
+                if parking is not None:
+                    parking.setFocus(Qt.FocusReason.OtherFocusReason)
         self._refresh_ui()
+        if not busy and self._focus_to_restore is not None:
+            widget, self._focus_to_restore = self._focus_to_restore, None
+            if widget.isEnabled() and widget.isVisible():
+                widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _on_undo_available(self, available: bool) -> None:
         """Update Undo button state."""

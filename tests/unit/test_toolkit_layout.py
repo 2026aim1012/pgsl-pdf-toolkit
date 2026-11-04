@@ -3,7 +3,9 @@
 Run with:  uv run pytest tests/unit/test_toolkit_layout.py -v
 """
 
+import pytest
 from PySide6.QtCore import QSettings
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QScrollArea
 
 from pdf_toolkit.gui.main_window import MainWindow
@@ -102,4 +104,32 @@ def test_empty_preview_shows_a_dash_not_page_zero(qapp):
     assert panel.page_box.value() == panel.page_box.minimum()
     assert panel.total_label.text() == "/ –"
 
+    session.cleanup()
+
+
+def test_scroll_stays_put_when_a_job_starts(qapp, monkeypatch):
+    """Bug seen in testing: clicking Rotate made the Toolkit jump to the
+    bottom, because the focused button was greyed out during the job and
+    focus (and the scroll area with it) moved on to another control."""
+    session, toolkit = make_toolkit()
+    toolkit.resize(360, 320)  # small, so the tools need scrolling
+    toolkit.show()
+    QTest.qWaitForWindowExposed(toolkit)
+    toolkit.activateWindow()
+
+    toolkit.rotate_button.setEnabled(True)
+    toolkit.rotate_button.setFocus()
+    if not toolkit.rotate_button.hasFocus():
+        pytest.skip("no keyboard focus available on this test platform")
+    bar = toolkit.findChildren(QScrollArea)[0].verticalScrollBar()
+    bar.setValue(0)
+
+    monkeypatch.setattr(type(session), "busy", property(lambda self: True))
+    toolkit._on_busy_changed(True)  # a job starts: buttons grey out
+
+    assert not toolkit.rotate_button.isEnabled()
+    assert bar.value() == 0  # did not jump
+    assert toolkit.category_group.checkedButton().hasFocus()  # focus parked
+
+    toolkit.close()
     session.cleanup()
